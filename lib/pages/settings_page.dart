@@ -183,8 +183,8 @@ class SettingsPage extends StatelessWidget {
     switch (locale.languageCode) {
       case 'en':
         return 'English';
-      case 'tr':
-        return 'Türkçe';
+      /*case 'tr':
+        return 'Türkçe';*/
       case 'zh':
         return '繁體中文';
       default:
@@ -209,12 +209,6 @@ class SettingsPage extends StatelessWidget {
                 context: context,
                 name: 'English',
                 locale: const Locale('en'),
-                isDark: isDark,
-              ),
-              _buildLanguageOption(
-                context: context,
-                name: 'Türkçe',
-                locale: const Locale('tr'),
                 isDark: isDark,
               ),
               _buildLanguageOption(

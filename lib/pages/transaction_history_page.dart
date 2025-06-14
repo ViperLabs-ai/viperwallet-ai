@@ -22,36 +22,51 @@ class TransactionHistoryPage extends StatefulWidget {
 class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
   List<Map<String, dynamic>> _allTransactions = [];
   bool _isLoading = false;
+  String? _lastSignature;
 
   @override
   void initState() {
     super.initState();
     _allTransactions = List.from(widget.transactions);
-    _loadMoreTransactions();
+    _fetchInitialTransactions();
+  }
+
+  Future<void> _fetchInitialTransactions() async {
+    _allTransactions.clear();
+    _lastSignature = null;
+    await _loadMoreTransactions();
   }
 
   Future<void> _loadMoreTransactions() async {
-    setState(() => _isLoading = true);
+    if (_isLoading) return;
 
+    setState(() => _isLoading = true);
     try {
       final signatures = await RpcService.executeWithFallback<List<dynamic>>(
             (client) => client.getSignaturesForAddress(
           widget.wallet.address,
-          limit: 50,
+          limit: 20,
+          before: _lastSignature,
         ),
       );
 
+      if (signatures == null || signatures.isEmpty) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
       setState(() {
-        _allTransactions = signatures.map((sig) => {
+        _lastSignature = signatures.last['signature'];
+        _allTransactions.addAll(signatures.map((sig) => {
           'signature': sig['signature'] ?? '',
           'slot': sig['slot'] ?? 0,
           'blockTime': sig['blockTime'],
           'confirmationStatus': sig['confirmationStatus'] ?? 'confirmed',
           'err': sig['err'],
-        }).toList();
+        }));
       });
     } catch (e) {
-      print('İşlem geçmişi yüklenirken hata: $e');
+      print('İşlem geçmişi yüklenirken hata oluştu: $e');
     }
 
     setState(() => _isLoading = false);
@@ -86,9 +101,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
         child: Container(
           decoration: BoxDecoration(
-            color: isDark
-                ? Colors.black.withOpacity(0.3)
-                : Colors.white.withOpacity(0.3),
+            color: isDark ? Colors.black.withOpacity(0.3) : Colors.white.withOpacity(0.3),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: const Color(0xFFFF6B35).withOpacity(0.2),
@@ -111,10 +124,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
       appBar: AppBar(
         title: Text(
           l10n.transactionHistory,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -125,12 +135,10 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
             decoration: BoxDecoration(
               color: Colors.black.withOpacity(0.3),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFFFF6B35).withOpacity(0.3),
-              ),
+              border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.3)),
             ),
             child: IconButton(
-              onPressed: _isLoading ? null : _loadMoreTransactions,
+              onPressed: _isLoading ? null : _fetchInitialTransactions,
               icon: _isLoading
                   ? const SizedBox(
                 width: 20,
@@ -140,10 +148,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
                   valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
                 ),
               )
-                  : Icon(
-                Icons.refresh,
-                color: const Color(0xFFFF6B35),
-              ),
+                  : const Icon(Icons.refresh, color: Color(0xFFFF6B35)),
             ),
           ),
         ],
@@ -154,24 +159,14 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [
-              const Color(0xFF000000),
-              const Color(0xFF1A1A1A),
-              const Color(0xFF2D1810),
-            ]
-                : [
-              Colors.grey[50]!,
-              Colors.grey[100]!,
-              const Color(0xFFFFF5F0),
-            ],
+                ? [const Color(0xFF000000), const Color(0xFF1A1A1A), const Color(0xFF2D1810)]
+                : [Colors.grey[50]!, Colors.grey[100]!, const Color(0xFFFFF5F0)],
           ),
         ),
         child: SafeArea(
           child: Column(
             children: [
               const SizedBox(height: 20),
-
-              // İstatistik kartı
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: _buildGlassCard(
@@ -185,11 +180,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
                             color: const Color(0xFFFF6B35).withOpacity(0.2),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Icon(
-                            Icons.receipt_long,
-                            color: Color(0xFFFF6B35),
-                            size: 24,
-                          ),
+                          child: const Icon(Icons.receipt_long, color: Color(0xFFFF6B35), size: 24),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -220,173 +211,150 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
                   ),
                 ),
               ),
-
-              // İşlem listesi
               Expanded(
                 child: _allTransactions.isEmpty
                     ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFF6B35).withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.receipt_long,
-                          color: Color(0xFFFF6B35),
-                          size: 48,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        l10n.noTransactionsYet,
-                        style: TextStyle(
-                          color: isDark ? Colors.white : Colors.black87,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        l10n.firstTransactionWillAppearHere,
-                        style: TextStyle(
-                          color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                          fontSize: 14,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+                  child: Text(
+                    l10n.noTransactionsYet,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black54,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 )
-                    : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _allTransactions.length,
-                  itemBuilder: (context, index) {
-                    final tx = _allTransactions[index];
-                    final isSuccess = tx['err'] == null;
+                    : NotificationListener<ScrollNotification>(
+                  onNotification: (scrollInfo) {
+                    if (scrollInfo.metrics.pixels == scrollInfo.metrics.maxScrollExtent) {
+                      _loadMoreTransactions();
+                    }
+                    return false;
+                  },
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _allTransactions.length,
+                    itemBuilder: (context, index) {
+                      final tx = _allTransactions[index];
+                      final isSuccess = tx['err'] == null;
+                      final signature = tx['signature'] ?? '';
+                      final shortSig = signature.length > 16 ? signature.substring(0, 16) : signature;
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: _buildGlassCard(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: (isSuccess ? Colors.green : Colors.red).withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Icon(
-                                      isSuccess ? Icons.check_circle : Icons.error,
-                                      color: isSuccess ? Colors.green : Colors.red,
-                                      size: 20,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          isSuccess ? l10n.successfulTransaction : l10n.failedTransaction,
-                                          style: TextStyle(
-                                            color: isDark ? Colors.white : Colors.black87,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _formatDate(tx['blockTime']),
-                                          style: TextStyle(
-                                            color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Text(
-                                    tx['confirmationStatus'] ?? l10n.confirmed,
-                                    style: TextStyle(
-                                      color: isSuccess ? Colors.green : Colors.red,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withOpacity(0.3),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Row(
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        child: _buildGlassCard(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
                                   children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: (isSuccess ? Colors.green : Colors.red).withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Icon(
+                                        isSuccess ? Icons.check_circle : Icons.error,
+                                        color: isSuccess ? Colors.green : Colors.red,
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            l10n.transactionSignature,
+                                            isSuccess ? l10n.successfulTransaction : l10n.failedTransaction,
+                                            style: TextStyle(
+                                              color: isDark ? Colors.white : Colors.black87,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _formatDate(tx['blockTime']),
                                             style: TextStyle(
                                               color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                                               fontSize: 12,
                                             ),
                                           ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '${tx['signature'].toString().substring(0, 16)}...',
-                                            style: const TextStyle(
-                                              color: Color(0xFFFF6B35),
-                                              fontFamily: 'monospace',
-                                              fontSize: 14,
-                                            ),
-                                          ),
                                         ],
                                       ),
                                     ),
-                                    IconButton(
-                                      onPressed: () => _copySignature(tx['signature']),
-                                      icon: const Icon(
-                                        Icons.copy,
-                                        color: Color(0xFFFF6B35),
-                                        size: 18,
+                                    Text(
+                                      tx['confirmationStatus'],
+                                      style: TextStyle(
+                                        color: isSuccess ? Colors.green : Colors.red,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
                                   ],
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '${l10n.slot}: ${tx['slot']}',
-                                      style: TextStyle(
-                                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                                        fontSize: 12,
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              l10n.transactionSignature,
+                                              style: TextStyle(
+                                                color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '$shortSig...',
+                                              style: const TextStyle(
+                                                color: Color(0xFFFF6B35),
+                                                fontFamily: 'monospace',
+                                                fontSize: 14,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      IconButton(
+                                        onPressed: () => _copySignature(signature),
+                                        icon: const Icon(Icons.copy, color: Color(0xFFFF6B35), size: 18),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${l10n.slot}: ${tx['slot']}',
+                                        style: TextStyle(
+                                          color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                                          fontSize: 12,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],

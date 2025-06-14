@@ -4,12 +4,20 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:solana/dto.dart';
+import 'package:solana/encoder.dart';
 import 'package:solana/solana.dart';
 import 'package:bs58/bs58.dart';
 import 'package:crypto/crypto.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../l10n/app_localizations.dart';
 import '../services/rpc_service.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:solana/solana.dart';
+import 'package:solana/src/encoder/instruction.dart' as encoder;
+import 'package:solana/src/encoder/byte_array.dart';
+
 
 class SendPage extends StatefulWidget {
   final Ed25519HDKeyPair wallet;
@@ -110,7 +118,7 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
         });
       }
     } catch (e) {
-      print('Bakiye yüklenirken hata: $e');
+      debugPrint('Balance loading error: $e');
       if (mounted) {
         setState(() {
           _networkStatus = l10n?.connectionError ?? 'Connection Error';
@@ -132,25 +140,42 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
         });
       }
     } catch (e) {
-      print('Blockhash yüklenirken hata: $e');
+      debugPrint('Blockhash loading error: $e');
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
+        _showErrorSnackBar('Failed to get recent blockhash');
+      }
     }
   }
 
   Future<void> _estimateFee() async {
     try {
+      // In a real implementation, you might want to fetch the actual fee estimate
+      // from the network instead of using a hardcoded value
       setState(() {
         _estimatedFee = 0.000005;
       });
     } catch (e) {
-      print('Fee estimation error: $e');
+      debugPrint('Fee estimation error: $e');
     }
   }
 
   bool _isValidSolanaAddress(String address) {
     try {
+      if (address.isEmpty) return false;
       if (address.length < 32 || address.length > 44) return false;
+
+      // Check if it's a valid base58 string
       final base58Regex = RegExp(r'^[1-9A-HJ-NP-Za-km-z]+$');
-      return base58Regex.hasMatch(address);
+      if (!base58Regex.hasMatch(address)) return false;
+
+      // Try to decode the address to verify it's valid
+      try {
+        final decoded = base58.decode(address);
+        return decoded.length == 32; // Solana addresses are 32 bytes
+      } catch (_) {
+        return false;
+      }
     } catch (e) {
       return false;
     }
@@ -159,11 +184,11 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
   String? _validateAmount(String value) {
     final l10n = AppLocalizations.of(context);
 
-    if (value.isEmpty) return 'Amount is required' ?? 'Amount is required';
+    if (value.isEmpty) return 'Amount is required';
 
     try {
       final amount = double.parse(value);
-      if (amount <= 0) return 'Amount must be greater than 0' ?? 'Amount must be greater than 0';
+      if (amount <= 0) return 'Amount must be greater than 0';
 
       final lamports = (amount * 1000000000).toInt();
       final fee = (_estimatedFee ?? 0.000005) * 1000000000;
@@ -175,12 +200,12 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
 
       final parts = value.split('.');
       if (parts.length > 1 && parts[1].length > 9) {
-        return 'Maximum 9 decimal places' ?? 'Maximum 9 decimal places';
+        return "Maximum 9 decimal places";
       }
 
       return null;
     } catch (e) {
-      return 'Invalid amount' ?? 'Invalid amount';
+      return "Invalid amount";
     }
   }
 
@@ -227,8 +252,11 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
       );
 
       if (result != null && mounted) {
+        // Process the scanned result to extract a valid Solana address
+        final address = _extractSolanaAddress(result);
+
         setState(() {
-          _recipientController.text = result;
+          _recipientController.text = address;
         });
 
         HapticFeedback.lightImpact();
@@ -239,6 +267,34 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
         _showErrorSnackBar('${l10n?.error ?? 'QR code scanning error'}: $e');
       }
     }
+  }
+
+  String _extractSolanaAddress(String scannedText) {
+    // Handle different QR code formats
+
+    // Check if it's a solana: URI
+    if (scannedText.toLowerCase().startsWith('solana:')) {
+      final uri = Uri.parse(scannedText);
+      return uri.path;
+    }
+
+    // Check if it's a plain address
+    if (_isValidSolanaAddress(scannedText)) {
+      return scannedText;
+    }
+
+    // Try to find a Solana address in the text
+    final addressRegex = RegExp(r'[1-9A-HJ-NP-Za-km-z]{32,44}');
+    final match = addressRegex.firstMatch(scannedText);
+    if (match != null) {
+      final potentialAddress = match.group(0) ?? '';
+      if (_isValidSolanaAddress(potentialAddress)) {
+        return potentialAddress;
+      }
+    }
+
+    // If no valid address found, return the original text
+    return scannedText;
   }
 
   Future<bool> _showConfirmationDialog() async {
@@ -304,7 +360,7 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
                         Expanded(
                           child: Text(
                             l10n?.irreversibleTransaction ?? 'WARNING: IRREVERSIBLE TRANSACTION',
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.red,
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
@@ -315,11 +371,11 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      '• ${l10n?.irreversibleTransaction ?? 'This transaction will occur on Solana mainnet'}\n'
-                          '• ${l10n?.irreversibleTransaction ?? 'Transaction cannot be reversed'}\n'
-                          '• ${l10n?.irreversibleTransaction ?? 'Carefully check recipient address'}\n'
-                          '• ${l10n?.networkFee ?? 'Network fee will be paid'}\n'
-                          '• ${l10n?.irreversibleTransaction ?? 'Private key will be used'}',
+                      '• ${'This transaction will occur on Solana mainnet'}\n'
+                          '• ${'Transaction cannot be reversed'}\n'
+                          '• ${'Carefully check recipient address'}\n'
+                          '• ${'Network fee will be paid'}\n'
+                          '• ${'Private key will be used'}',
                       style: const TextStyle(fontSize: 13, height: 1.4),
                     ),
                   ],
@@ -349,13 +405,18 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildDetailRow(l10n?.receiver ?? 'Recipient:', '${_recipientController.text.substring(0, 8)}...${_recipientController.text.substring(_recipientController.text.length - 8)}'),
+                    _buildDetailRow(
+                        l10n?.receiver ?? 'Recipient:',
+                        _recipientController.text.length > 16
+                            ? '${_recipientController.text.substring(0, 8)}...${_recipientController.text.substring(_recipientController.text.length - 8)}'
+                            : _recipientController.text
+                    ),
                     const SizedBox(height: 8),
                     _buildDetailRow(l10n?.amount ?? 'Amount:', '${double.parse(_amountController.text).toStringAsFixed(9)} SOL'),
                     const SizedBox(height: 8),
                     _buildDetailRow(l10n?.networkFee ?? 'Network Fee:', '${(_estimatedFee ?? 0.000005).toStringAsFixed(9)} SOL'),
                     const Divider(height: 20),
-                    _buildDetailRow(l10n?.total ?? 'Total:', '${double.parse(_amountController.text) + (_estimatedFee ?? 0.000005)} SOL', isTotal: true),
+                    _buildDetailRow(l10n?.total ?? 'Total:', '${total.toStringAsFixed(9)} SOL', isTotal: true),
                     if (_memoController.text.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       _buildDetailRow(l10n?.memo ?? 'Memo:', _memoController.text),
@@ -429,7 +490,7 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
     final l10n = AppLocalizations.of(context);
 
     if (_recipientController.text.isEmpty || _amountController.text.isEmpty) {
-      //_showErrorSnackBar(l10n?.invalidAmount ?? 'Please fill in all required fields');
+      _showErrorSnackBar('Please fill in all required fields');
       return;
     }
 
@@ -481,13 +542,19 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
     } catch (e) {
       if (mounted) {
         HapticFeedback.heavyImpact();
-        //_showErrorSnackBar('${l10n?.transactionError ?? 'Transaction error'}: ${e.toString()}');
+        _showErrorSnackBar('${'Transaction error'}: ${e.toString()}');
       }
     }
 
     if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  ByteArray encodeU64(int value) {
+    final bytes = ByteData(8);
+    bytes.setUint64(0, value, Endian.little);
+    return ByteArray(bytes.buffer.asUint8List());
   }
 
   Future<String> _createAndSendTransaction({
@@ -502,13 +569,26 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
         throw Exception('Could not get blockhash');
       }
 
-      final transferInstruction = SystemInstruction.transfer(
-        fundingAccount: widget.wallet.publicKey,
-        recipientAccount: Ed25519HDPublicKey.fromBase58(recipient),
-        lamports: lamports,
+      final instruction = encoder.Instruction(
+        programId: SystemProgram.id,
+        accounts: [
+          AccountMeta.writeable(pubKey: widget.wallet.publicKey, isSigner: true),
+          AccountMeta.writeable(pubKey: Ed25519HDPublicKey.fromBase58(recipient), isSigner: false),
+        ],
+        data: encodeU64(lamports),
       );
 
-      final instructions = [transferInstruction];
+      final List<encoder.Instruction> instructions = [instruction];
+
+      if (memo != null && memo.isNotEmpty) {
+        try {
+          final memoInstruction = _createMemoInstruction(memo);
+          instructions.add(memoInstruction);
+        } catch (e) {
+          debugPrint('Failed to add memo: $e');
+        }
+      }
+
       final message = Message(instructions: instructions);
 
       final compiledMessage = message.compile(
@@ -517,39 +597,47 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
       );
 
       final signature = await _sendCompiledTransactionWithFallback(compiledMessage);
-
-      if (memo != null && memo.isNotEmpty) {
-        print('Memo (not added to transaction): $memo');
-      }
-
       await _waitForConfirmation(signature);
 
       return signature;
     } catch (e) {
-      print('Transaction error details: $e');
+      debugPrint('Transaction error details: $e');
       throw Exception('Transaction failed: ${e.toString()}');
     }
   }
 
+
+  encoder.Instruction _createMemoInstruction(String memo) {
+    return encoder.Instruction(
+      programId: Ed25519HDPublicKey.fromBase58("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+      accounts: [],
+      data: ByteArray(utf8.encode(memo)),
+    );
+  }
+
   Future<String> _sendCompiledTransactionWithFallback(dynamic compiledMessage) async {
     try {
+      // Convert compiled message to byte array
       final messageBytes = compiledMessage.toByteArray();
-      final messageList = <int>[];
-      for (int i = 0; i < messageBytes.length; i++) {
-        messageList.add(messageBytes[i]);
-      }
 
-      final messageUint8List = Uint8List.fromList(messageList);
+      // Ensure we have a proper Uint8List
+      final messageUint8List = Uint8List.fromList(messageBytes);
+
+      // Sign the message
       final signature = await widget.wallet.sign(messageUint8List);
       final signatureBytes = await signature.bytes;
 
+      // Create the transaction with signature
       final transactionBytes = <int>[];
-      transactionBytes.add(1);
-      transactionBytes.addAll(signatureBytes);
-      transactionBytes.addAll(messageList);
+      transactionBytes.add(1); // Transaction format version
+      transactionBytes.add(signatureBytes.length); // Number of signatures (1)
+      transactionBytes.addAll(signatureBytes); // Add signature
+      transactionBytes.addAll(messageUint8List); // Add message
 
+      // Encode the transaction
       final encodedTransaction = base64.encode(transactionBytes);
 
+      // Send the transaction
       final txSignature = await RpcService.executeWithFallback<String>(
             (client) => client.sendTransaction(
           encodedTransaction,
@@ -559,12 +647,13 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
 
       return txSignature;
     } catch (e) {
+      debugPrint('Transaction sending error: $e');
       throw Exception('Transaction sending error: $e');
     }
   }
 
   Future<void> _waitForConfirmation(String signature) async {
-    print('Transaction sent, waiting for confirmation: $signature');
+    debugPrint('Transaction sent, waiting for confirmation: $signature');
 
     for (int i = 0; i < 60; i++) {
       await Future.delayed(const Duration(seconds: 1));
@@ -577,11 +666,11 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
         if (statuses.value.isNotEmpty && statuses.value.first != null) {
           final status = statuses.value.first!;
 
-          print('Transaction status: ${status.confirmationStatus}');
+          debugPrint('Transaction status: ${status.confirmationStatus}');
 
           if (status.confirmationStatus == 'confirmed' ||
               status.confirmationStatus == 'finalized') {
-            print('Transaction confirmed!');
+            debugPrint('Transaction confirmed!');
             return;
           }
 
@@ -590,11 +679,11 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
           }
         }
       } catch (e) {
-        print('Confirmation check error: $e');
+        debugPrint('Confirmation check error: $e');
       }
     }
 
-    print('Confirmation timeout - transaction may still be processing');
+    debugPrint('Confirmation timeout - transaction may still be processing');
   }
 
   void _showErrorSnackBar(String message) {
@@ -651,10 +740,11 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
           label: l10n?.viewInExplorer ?? 'View in Explorer',
           textColor: Colors.white,
           onPressed: () {
-            Clipboard.setData(ClipboardData(text: 'https://explorer.solana.com/tx/$signature'));
+            final explorerUrl = 'https://explorer.solana.com/tx/$signature';
+            Clipboard.setData(ClipboardData(text: explorerUrl));
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(l10n?.viewInExplorer ?? 'Explorer link copied!'),
+                content: Text('Explorer link copied!'),
                 duration: const Duration(seconds: 2),
                 backgroundColor: Colors.blue.shade600,
                 behavior: SnackBarBehavior.floating,
@@ -918,7 +1008,7 @@ class _SendPageState extends State<SendPage> with TickerProviderStateMixin, Auto
                                     onChanged: (value) => setState(() {}),
                                     validator: (value) {
                                       if (value == null || value.isEmpty) {
-                                        return l10n?.recipientAddress ?? 'Recipient address is required';
+                                        return 'Recipient address is required';
                                       }
                                       if (!_isValidSolanaAddress(value)) {
                                         return l10n?.invalidSolanaAddress ?? 'Invalid Solana address';
@@ -1234,10 +1324,10 @@ class _QRScannerPageState extends State<QRScannerPage> {
             controller: cameraController,
             onDetect: (capture) {
               if (!_isScanned) {
-                _isScanned = true;
                 final List<Barcode> barcodes = capture.barcodes;
                 for (final barcode in barcodes) {
                   if (barcode.rawValue != null) {
+                    _isScanned = true;
                     HapticFeedback.heavyImpact();
                     Navigator.pop(context, barcode.rawValue);
                     break;

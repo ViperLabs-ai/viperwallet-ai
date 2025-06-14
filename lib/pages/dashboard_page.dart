@@ -900,10 +900,10 @@ class _DashboardPageState extends State<DashboardPage>
 
                     _buildQuickActions(l10n),
 
-                    const SizedBox(height: 40),
+                    //const SizedBox(height: 40),
 
                     // Token List Section
-                    _buildTokenListSection(isDark),
+                    //_buildTokenListSection(isDark),
 
                     const SizedBox(height: 40),
 
@@ -1608,7 +1608,7 @@ class _DashboardPageState extends State<DashboardPage>
         const SizedBox(height: 16),
         RepaintBoundary(
           child: GridView.count(
-            crossAxisCount: 3,
+            crossAxisCount: 2,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
             shrinkWrap: true,
@@ -1786,7 +1786,7 @@ class _DashboardPageState extends State<DashboardPage>
     return _buildGlassCard(
       gradientColors: [color ?? const Color(0xFFFF6B35), const Color(0xFFFF8C42)],
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(9),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

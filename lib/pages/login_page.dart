@@ -122,221 +122,224 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? [
-              const Color(0xFF000000),
-              const Color(0xFF1A1A1A),
-              const Color(0xFF2D1810),
-            ]
-                : [
-              const Color(0xFFFAFAFA),
-              const Color(0xFFF5F5F5),
-              const Color(0xFFFFF5F0),
-            ],
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [
+                const Color(0xFF000000),
+                const Color(0xFF1A1A1A),
+                const Color(0xFF2D1810),
+              ]
+                  : [
+                const Color(0xFFFAFAFA),
+                const Color(0xFFF5F5F5),
+                const Color(0xFFFFF5F0),
+              ],
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Logo and title
-                    Column(
-                      children: [
-                        Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFFF6B35).withOpacity(0.3),
-                                blurRadius: 20,
-                                spreadRadius: 5,
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.account_balance_wallet,
-                            color: Colors.white,
-                            size: 60,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        Text(
-                          l10n.appTitle,
-                          style: TextStyle(
-                            color: isDark ? Colors.white : Colors.black87,
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          l10n.welcome,
-                          style: TextStyle(
-                            color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 48),
-
-                    // Mnemonic input
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.black.withOpacity(0.3)
-                            : Colors.white.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: const Color(0xFFFF6B35).withOpacity(0.2),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Logo and title
+                      Column(
                         children: [
-                          Text(
-                            l10n.mnemonicPhrase,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black87,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _mnemonicController,
-                            maxLines: _showMnemonic ? 3 : 1,
-                            obscureText: !_showMnemonic,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black87,
-                              fontSize: 16,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: _showMnemonic
-                                  ? l10n.mnemonicHintExpanded
-                                  : l10n.mnemonicHint,
-                              hintStyle: TextStyle(
-                                color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                          Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
                               ),
-                              prefixIcon: const Icon(
-                                Icons.lock_outline,
-                                color: Color(0xFFFF6B35),
-                              ),
-                              suffixIcon: IconButton(
-                                icon: Icon(
-                                  _showMnemonic ? Icons.visibility_off : Icons.visibility,
-                                  color: const Color(0xFFFF6B35),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFFF6B35).withOpacity(0.3),
+                                  blurRadius: 20,
+                                  spreadRadius: 5,
                                 ),
-                                onPressed: () {
-                                  setState(() {
-                                    _showMnemonic = !_showMnemonic;
-                                  });
-                                },
-                              ),
-                              border: InputBorder.none,
-                              contentPadding: const EdgeInsets.all(16),
+                              ],
                             ),
-                            enabled: !_isLoading,
+                            child: const Icon(
+                              Icons.account_balance_wallet,
+                              color: Colors.white,
+                              size: 60,
+                            ),
                           ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // Login button
-                    Container(
-                      width: double.infinity,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFFF6B35).withOpacity(0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
+                          const SizedBox(height: 24),
+                          Text(
+                            l10n.appTitle,
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ],
-                      ),
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _login,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: _isLoading
-                            ? const CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        )
-                            : Text(
-                          l10n.login,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Security info
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.blue.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.security,
-                            color: Colors.blue,
-                            size: 20,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              l10n.securityInfo,
-                              style: const TextStyle(
-                                color: Colors.blue,
-                                fontSize: 12,
-                              ),
+                          const SizedBox(height: 8),
+                          Text(
+                            l10n.welcome,
+                            style: TextStyle(
+                              color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                              fontSize: 16,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+
+                      const SizedBox(height: 48),
+
+                      // Mnemonic input
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? Colors.black.withOpacity(0.3)
+                              : Colors.white.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: const Color(0xFFFF6B35).withOpacity(0.2),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              l10n.mnemonicPhrase,
+                              style: TextStyle(
+                                color: isDark ? Colors.white : Colors.black87,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: _mnemonicController,
+                              maxLines: _showMnemonic ? 3 : 1,
+                              obscureText: !_showMnemonic,
+                              style: TextStyle(
+                                color: isDark ? Colors.white : Colors.black87,
+                                fontSize: 16,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: _showMnemonic
+                                    ? l10n.mnemonicHintExpanded
+                                    : l10n.mnemonicHint,
+                                hintStyle: TextStyle(
+                                  color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                                ),
+                                prefixIcon: const Icon(
+                                  Icons.lock_outline,
+                                  color: Color(0xFFFF6B35),
+                                ),
+                                suffixIcon: IconButton(
+                                  icon: Icon(
+                                    _showMnemonic ? Icons.visibility_off : Icons.visibility,
+                                    color: const Color(0xFFFF6B35),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _showMnemonic = !_showMnemonic;
+                                    });
+                                  },
+                                ),
+                                border: InputBorder.none,
+                                contentPadding: const EdgeInsets.all(16),
+                              ),
+                              enabled: !_isLoading,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 32),
+
+                      // Login button
+                      Container(
+                        width: double.infinity,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFFF6B35).withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _login,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: _isLoading
+                              ? const CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          )
+                              : Text(
+                            l10n.login,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Security info
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.blue.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.security,
+                              color: Colors.blue,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                l10n.securityInfo,
+                                style: const TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
