@@ -6,39 +6,15 @@ import 'package:flutter/services.dart';
 import 'package:solana/dto.dart';
 import 'package:solana/solana.dart';
 import 'package:http/http.dart' as http;
-import 'package:provider/provider.dart';
-import '../l10n/app_localizations.dart';
-import 'transaction_history_page.dart';
-import 'send_page.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:viperwallet/pages/nft_page.dart';
+import 'charts_page.dart';
+import 'send_page.dart' hide lamportsPerSol;
+import 'swap_page.dart' hide lamportsPerSol;
 import 'receive_page.dart';
 import 'swap_page.dart';
-import 'nft_page.dart';
-import 'charts_page.dart';
-import 'settings_page.dart';
-import '../providers/app_provider.dart';
+import 'transaction_history_page.dart';
 import '../services/rpc_service.dart';
-
-class TokenInfo {
-  final String mint;
-  final String name;
-  final String symbol;
-  final double balance;
-  final int decimals;
-  final String? logoUri;
-  final double? price;
-  final double? change24h;
-
-  TokenInfo({
-    required this.mint,
-    required this.name,
-    required this.symbol,
-    required this.balance,
-    required this.decimals,
-    this.logoUri,
-    this.price,
-    this.change24h,
-  });
-}
 
 class DashboardPage extends StatefulWidget {
   final Ed25519HDKeyPair wallet;
@@ -59,6 +35,10 @@ class _DashboardPageState extends State<DashboardPage>
   bool _isLoading = true;
   bool _showFullAddress = false;
 
+  // Token balances
+  List<Map<String, dynamic>> _tokenBalances = [];
+  bool _isLoadingTokens = false;
+
   late AnimationController _refreshController;
   late AnimationController _cardController;
   late AnimationController _pulseController;
@@ -68,31 +48,24 @@ class _DashboardPageState extends State<DashboardPage>
   late Animation<double> _rotationAnimation;
   late Animation<double> _scaleAnimation;
 
-  double _solPrice = 180.0;
+  double _solPrice = 0.0;
   double _dailyChange = 0.0;
   double _weeklyChange = 0.0;
   double _monthlyChange = 0.0;
-  double _dailyVolume = 2000000000;
-  double _marketCap = 85000000000;
+  double _dailyVolume = 0.0;
+  double _marketCap = 0.0;
 
   double _walletDailyChange = 0.0;
   double _walletWeeklyChange = 0.0;
   double _walletMonthlyChange = 0.0;
 
-  int _transactionCount = 0;
-  bool _isLoadingStats = true;
   List<Map<String, dynamic>> _recentTransactions = [];
-
-  // Token-related variables
-  List<TokenInfo> _tokens = [];
-  bool _isLoadingTokens = true;
-  double _totalPortfolioValue = 0.0;
+  bool _isLoadingTransactions = false;
 
   String _networkStatus = '';
   bool _isNetworkConnected = false;
   int _retryCount = 0;
   static const int _maxRetries = 3;
-  bool _hasInitialized = false;
 
   @override
   void initState() {
@@ -157,61 +130,52 @@ class _DashboardPageState extends State<DashboardPage>
   Future<void> _loadAllData() async {
     if (!mounted) return;
 
-    final l10n = AppLocalizations.of(context);
-
     setState(() {
       _isLoading = true;
-      _isLoadingStats = true;
-      _isLoadingTokens = true;
-      _networkStatus = l10n?.connecting ?? 'Connecting...';
+      _networkStatus = 'Connecting...';
+      _retryCount = 0;
     });
 
     _refreshController.repeat();
 
     try {
-      RpcService.resetToFirstEndpoint();
-
-      await _loadBalance();
+      // SOL bakiyesini yükle
+      await _loadSolBalance();
       if (!mounted) return;
 
-      await _loadTokens();
+      // Token bakiyelerini yükle
+      await _loadTokenBalances();
       if (!mounted) return;
 
+      // SOL fiyat verilerini yükle
       await _loadSolPriceData();
       if (!mounted) return;
 
+      // Transaction history'yi yükle
       await _loadTransactionHistory();
       if (!mounted) return;
 
       setState(() {
         _isNetworkConnected = true;
-        _networkStatus = l10n?.connected ?? 'Connected';
-        _retryCount = 0;
+        _networkStatus = 'Connected';
       });
+
     } catch (e) {
       print('❌ Data loading error: $e');
-
       if (mounted) {
         setState(() {
           _isNetworkConnected = false;
-          _networkStatus = l10n?.connectionError ?? 'Connection Error';
+          _networkStatus = 'Connection Error';
           _retryCount++;
-
-          if (_retryCount >= _maxRetries) {
-            _networkStatus = l10n?.offlineMode ?? 'Offline Mode';
-          }
         });
       }
     }
 
     _calculateWalletChanges();
-    _calculateTotalPortfolioValue();
 
     if (mounted) {
       setState(() {
         _isLoading = false;
-        _isLoadingStats = false;
-        _isLoadingTokens = false;
       });
     }
 
@@ -219,24 +183,35 @@ class _DashboardPageState extends State<DashboardPage>
     _refreshController.reset();
   }
 
-  Future<void> _loadBalance() async {
+  Future<void> _loadSolBalance() async {
     if (!mounted) return;
-
-    final l10n = AppLocalizations.of(context);
 
     try {
       setState(() {
-        _networkStatus = l10n?.loadingBalance ?? 'Loading balance...';
+        _networkStatus = 'Loading SOL balance...';
       });
 
-      final response = await RpcService.executeWithFallback<BalanceResult>(
-            (client) => client.getBalance(widget.wallet.address),
+      print('🔍 Loading balance for wallet: ${widget.wallet.address}');
+
+      // Solana client oluştur
+      final client = SolanaClient(
+        rpcUrl: Uri.parse('https://api.mainnet-beta.solana.com'),
+        websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
       );
+
+      // Balance'ı al
+      final balance = await client.rpcClient.getBalance(widget.wallet.address);
+
+      print('💰 Raw balance response: $balance');
+
+      final balanceInSol = balance.value / lamportsPerSol;
+
+      print('💰 Balance in SOL: $balanceInSol');
 
       if (mounted) {
         setState(() {
-          _solBalance = response.value / 1000000000;
-          _networkStatus = l10n?.balanceLoaded ?? 'Balance loaded';
+          _solBalance = balanceInSol;
+          _networkStatus = 'SOL balance: ${balanceInSol.toStringAsFixed(6)}';
         });
       }
 
@@ -244,126 +219,98 @@ class _DashboardPageState extends State<DashboardPage>
       print('❌ Balance loading error: $e');
       if (mounted) {
         setState(() {
-          _networkStatus = l10n?.balanceLoadFailed ?? 'Balance error';
+          _solBalance = 0.0;
+          _networkStatus = 'Balance loading failed: ${e.toString()}';
         });
       }
       rethrow;
     }
   }
 
-  Future<void> _loadTokens() async {
+  Future<void> _loadTokenBalances() async {
     if (!mounted) return;
 
+    setState(() {
+      _isLoadingTokens = true;
+      _networkStatus = 'Loading token balances...';
+    });
+
     try {
-      setState(() {
-        _networkStatus = 'Loading tokens...';
-        _isLoadingTokens = true;
-      });
+      print('🪙 Loading token balances for wallet: ${widget.wallet.address}');
 
-      // Basit ve güvenli yaklaşım - popüler token'ları manuel kontrol et
-      final knownTokens = [
-        {
-          'mint': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-          'name': 'USD Coin',
-          'symbol': 'USDC',
-          'decimals': 6,
-          'logoUri': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
-        },
-        {
-          'mint': 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
-          'name': 'Tether USD',
-          'symbol': 'USDT',
-          'decimals': 6,
-          'logoUri': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
-        },
-        {
-          'mint': 'So11111111111111111111111111111111111111112',
-          'name': 'Wrapped SOL',
-          'symbol': 'wSOL',
-          'decimals': 9,
-          'logoUri': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
-        },
-        {
-          'mint': 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So',
-          'name': 'Marinade staked SOL',
-          'symbol': 'mSOL',
-          'decimals': 9,
-          'logoUri': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So/logo.png',
-        },
-        {
-          'mint': '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs',
-          'name': 'Ethereum (Wormhole)',
-          'symbol': 'ETH',
-          'decimals': 8,
-          'logoUri': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs/logo.png',
-        },
-      ];
+      final client = SolanaClient(
+        rpcUrl: Uri.parse('https://api.mainnet-beta.solana.com'),
+        websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
+      );
 
-      List<TokenInfo> validTokens = [];
+      // Token accounts'ları al
+      final tokenAccounts = await client.rpcClient.getTokenAccountsByOwner(
+        widget.wallet.address,
+        const TokenAccountsFilter.byProgramId('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
+        encoding: Encoding.jsonParsed,
+      );
 
-      for (final tokenData in knownTokens) {
+      print('🪙 Found ${tokenAccounts.value.length} token accounts');
+
+      List<Map<String, dynamic>> tokens = [];
+
+      for (final account in tokenAccounts.value) {
         try {
-          // Token hesaplarını kontrol et
-          final tokenAccounts = await RpcService.executeWithFallback<ProgramAccountsResult>(
-                (client) => client.getTokenAccountsByOwner(
-              widget.wallet.address,
-              TokenAccountsFilter.byMint(tokenData['mint'] as String),
-              commitment: Commitment.confirmed,
-            ),
-          );
+          final accountData = account.account.data;
+          if (accountData is ParsedAccountData) {
+            final parsed = accountData.parsed;
+            if (parsed is Map<String, dynamic>) {
+              final info = parsed['info'] as Map<String, dynamic>?;
+              if (info != null) {
+                final tokenAmount = info['tokenAmount'] as Map<String, dynamic>?;
+                final mint = info['mint'] as String?;
 
-          if (tokenAccounts.value.isNotEmpty) {
-            // İlk token hesabının balance'ını al
-            final tokenAccount = tokenAccounts.value.first;
-            final balanceResult = await RpcService.executeWithFallback<TokenAmountResult>(
-                  (client) => client.getTokenAccountBalance(
-                tokenAccount.pubkey,
-                commitment: Commitment.confirmed,
-              ),
-            );
+                if (tokenAmount != null && mint != null) {
+                  final uiAmount = tokenAmount['uiAmount'];
+                  final decimals = tokenAmount['decimals'] as int? ?? 0;
 
-            // Balance değerini hesapla
-            final amount = double.tryParse(balanceResult.value.amount) ?? 0.0;
-            final decimals = balanceResult.value.decimals;
-            final balance = amount / pow(10, decimals);
+                  // Sadece bakiyesi olan tokenları ekle
+                  if (uiAmount != null && uiAmount > 0) {
+                    // Token metadata'sını al
+                    final tokenInfo = await _getTokenMetadata(mint);
 
-            if (balance > 0) {
-              // Token metadata'sını al
-              final tokenInfo = await _getTokenMetadata(tokenData['mint'] as String);
-
-              validTokens.add(TokenInfo(
-                mint: tokenData['mint'] as String,
-                name: tokenData['name'] as String,
-                symbol: tokenData['symbol'] as String,
-                balance: balance,
-                decimals: decimals,
-                logoUri: tokenData['logoUri'] as String?,
-                price: tokenInfo['price'],
-                change24h: tokenInfo['change24h'],
-              ));
+                    tokens.add({
+                      'mint': mint,
+                      'balance': uiAmount,
+                      'decimals': decimals,
+                      'name': tokenInfo['name'] ?? 'Unknown Token',
+                      'symbol': tokenInfo['symbol'] ?? mint.substring(0, 6),
+                      'logoURI': tokenInfo['logoURI'],
+                      'verified': tokenInfo['verified'] ?? false,
+                    });
+                  }
+                }
+              }
             }
           }
         } catch (e) {
-          print('❌ ${tokenData['symbol']} kontrol hatası: $e');
+          print('❌ Error processing token account: $e');
           continue;
         }
       }
 
+      print('✅ Loaded ${tokens.length} tokens with balance');
+
       if (mounted) {
         setState(() {
-          _tokens = validTokens;
-          _networkStatus = validTokens.isEmpty ? 'No tokens found' : 'Tokens loaded';
+          _tokenBalances = tokens;
           _isLoadingTokens = false;
+          _networkStatus = 'Loaded ${tokens.length} tokens';
         });
       }
 
     } catch (e) {
-      print('❌ Token yükleme hatası: $e');
+      print('❌ Token balance loading error: $e');
       if (mounted) {
         setState(() {
-          _tokens = [];
-          _networkStatus = 'Token loading failed';
+          _tokenBalances = [];
           _isLoadingTokens = false;
+          _networkStatus = 'Token loading failed';
         });
       }
     }
@@ -371,160 +318,196 @@ class _DashboardPageState extends State<DashboardPage>
 
   Future<Map<String, dynamic>> _getTokenMetadata(String mint) async {
     try {
-      // CoinGecko'dan fiyat bilgisi almaya çalış
-      final priceResponse = await http.get(
-        Uri.parse('https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses=$mint&vs_currencies=usd&include_24hr_change=true'),
-        headers: {'Accept': 'application/json'},
+      // Jupiter token listesinden metadata al
+      final response = await http.get(
+        Uri.parse('https://tokens.jup.ag/token/$mint'),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'ViperWallet/1.0',
+        },
       ).timeout(const Duration(seconds: 5));
 
-      if (priceResponse.statusCode == 200) {
-        final priceData = json.decode(priceResponse.body);
-        if (priceData[mint] != null) {
-          return {
-            'price': priceData[mint]['usd']?.toDouble(),
-            'change24h': priceData[mint]['usd_24h_change']?.toDouble(),
-          };
-        }
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'name': data['name'],
+          'symbol': data['symbol'],
+          'logoURI': data['logoURI'],
+          'verified': (data['tags'] as List?)?.contains('verified') ?? false,
+        };
       }
     } catch (e) {
-      print('❌ Token metadata hatası: $e');
+      print('❌ Token metadata error for $mint: $e');
     }
 
-    // Varsayılan değerler
+    // Fallback
     return {
-      'price': null,
-      'change24h': null,
+      'name': 'Token ${mint.substring(0, 6)}...${mint.substring(mint.length - 4)}',
+      'symbol': mint.substring(0, 6).toUpperCase(),
+      'logoURI': null,
+      'verified': false,
     };
   }
 
   Future<void> _loadSolPriceData() async {
     if (!mounted) return;
 
-    final l10n = AppLocalizations.of(context);
-
     try {
       setState(() {
-        _networkStatus = l10n?.loadingPriceData ?? 'Loading price data...';
+        _networkStatus = 'Loading SOL price...';
       });
 
-      final endpoints = [
-        'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true&include_7d_change=true&include_30d_change=true&include_24hr_vol=true&include_market_cap=true',
-        'https://api.binance.com/api/v3/ticker/24hr?symbol=SOLUSDT',
-      ];
+      // CoinGecko API
+      final response = await http.get(
+        Uri.parse(
+            'https://api.coingecko.com/api/v3/simple/price?'
+                'ids=solana&'
+                'vs_currencies=usd&'
+                'include_24hr_change=true&'
+                'include_7d_change=true&'
+                'include_30d_change=true&'
+                'include_24hr_vol=true&'
+                'include_market_cap=true'
+        ),
+        headers: {
+          'User-Agent': 'ViperWallet/1.0',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
 
-      bool success = false;
+      if (response.statusCode == 200 && mounted) {
+        final data = json.decode(response.body);
+        final solData = data['solana'];
 
-      for (final endpoint in endpoints) {
-        if (!mounted) return;
+        setState(() {
+          _solPrice = (solData['usd'] as num).toDouble();
+          _dailyChange = (solData['usd_24h_change'] as num?)?.toDouble() ?? 0.0;
+          _weeklyChange = (solData['usd_7d_change'] as num?)?.toDouble() ?? 0.0;
+          _monthlyChange = (solData['usd_30d_change'] as num?)?.toDouble() ?? 0.0;
+          _dailyVolume = (solData['usd_24h_vol'] as num?)?.toDouble() ?? 0.0;
+          _marketCap = (solData['usd_market_cap'] as num?)?.toDouble() ?? 0.0;
+          _networkStatus = 'SOL price: \$${_solPrice.toStringAsFixed(2)}';
+        });
 
-        try {
-          final priceResponse = await http.get(
-            Uri.parse(endpoint),
-            headers: {
-              'User-Agent': 'ViperWallet/1.0',
-              'Accept': 'application/json',
-            },
-          ).timeout(const Duration(seconds: 8));
-
-          if (priceResponse.statusCode == 200 && mounted) {
-            if (endpoint.contains('coingecko')) {
-              final priceData = json.decode(priceResponse.body);
-              setState(() {
-                _solPrice = priceData['solana']['usd'].toDouble();
-                _dailyChange = priceData['solana']['usd_24h_change']?.toDouble() ?? 0.0;
-                _weeklyChange = priceData['solana']['usd_7d_change']?.toDouble() ?? 0.0;
-                _monthlyChange = priceData['solana']['usd_30d_change']?.toDouble() ?? 0.0;
-                _dailyVolume = priceData['solana']['usd_24h_vol']?.toDouble() ?? 0.0;
-                _marketCap = priceData['solana']['usd_market_cap']?.toDouble() ?? 0.0;
-                _networkStatus = l10n?.priceDataLoaded ?? 'Price data loaded';
-              });
-              success = true;
-              break;
-            }
-          }
-        } catch (e) {
-          print('❌ Price API error ($endpoint): $e');
-          continue;
-        }
-      }
-
-      if (!success) {
-        throw Exception('All price APIs failed');
+        print('💲 SOL Price loaded: \$${_solPrice.toStringAsFixed(2)}');
+      } else {
+        throw Exception('Price API returned ${response.statusCode}');
       }
 
     } catch (e) {
       print('❌ Price loading error: $e');
       if (mounted) {
         setState(() {
-          _networkStatus = 'Price data offline';
+          _solPrice = 0.0;
+          _networkStatus = 'Price loading failed';
         });
       }
-      rethrow;
     }
-  }
-
-  void _calculateWalletChanges() {
-    _walletDailyChange = (_solBalance * _solPrice * _dailyChange / 100);
-    _walletWeeklyChange = (_solBalance * _solPrice * _weeklyChange / 100);
-    _walletMonthlyChange = (_solBalance * _solPrice * _monthlyChange / 100);
-  }
-
-  void _calculateTotalPortfolioValue() {
-    double totalValue = _solBalance * _solPrice;
-
-    for (final token in _tokens) {
-      if (token.price != null) {
-        totalValue += token.balance * token.price!;
-      }
-    }
-
-    _totalPortfolioValue = totalValue;
   }
 
   Future<void> _loadTransactionHistory() async {
     if (!mounted) return;
 
-    final l10n = AppLocalizations.of(context);
+    setState(() {
+      _isLoadingTransactions = true;
+      _networkStatus = 'Loading transactions...';
+    });
 
     try {
-      setState(() {
-        _networkStatus = l10n?.loadingTransactionHistory ?? 'Loading transaction history...';
-      });
+      print('📜 Loading transaction history for: ${widget.wallet.address}');
 
-      final signatures = await RpcService.executeWithFallback<List<TransactionSignatureInformation>>(
-            (client) => client.getSignaturesForAddress(widget.wallet.address, limit: 5),
+      final client = SolanaClient(
+        rpcUrl: Uri.parse('https://api.mainnet-beta.solana.com'),
+        websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
       );
 
-      if (mounted) {
-        setState(() {
-          _transactionCount = signatures.length;
-          _recentTransactions = signatures.map((sig) => {
+      final signatures = await client.rpcClient.getSignaturesForAddress(
+        widget.wallet.address,
+        limit: 10,
+      );
+
+      print('📜 Found ${signatures.length} transactions');
+
+      final List<Map<String, dynamic>> transactions = [];
+
+      for (final sig in signatures) {
+        try {
+          // Transaction detaylarını al
+          final txDetail = await client.rpcClient.getTransaction(
+            sig.signature,
+            encoding: Encoding.json,
+            commitment: Commitment.confirmed,
+          );
+
+          if (txDetail != null) {
+            transactions.add({
+              'signature': sig.signature,
+              'slot': sig.slot,
+              'blockTime': sig.blockTime,
+              'confirmationStatus': sig.confirmationStatus,
+              'err': sig.err,
+              'fee': txDetail.meta?.fee ?? 0,
+              'success': sig.err == null,
+            });
+          } else {
+            // Detay alınamazsa basit bilgilerle ekle
+            transactions.add({
+              'signature': sig.signature,
+              'slot': sig.slot,
+              'blockTime': sig.blockTime,
+              'confirmationStatus': sig.confirmationStatus,
+              'err': sig.err,
+              'fee': 5000, // Default fee
+              'success': sig.err == null,
+            });
+          }
+        } catch (e) {
+          print('❌ Transaction detail error for ${sig.signature}: $e');
+          // Hata olsa bile basit bilgilerle ekle
+          transactions.add({
             'signature': sig.signature,
             'slot': sig.slot,
             'blockTime': sig.blockTime,
             'confirmationStatus': sig.confirmationStatus,
             'err': sig.err,
-          }).toList();
-          _networkStatus = l10n?.transactionHistoryLoaded ?? 'Transaction history loaded';
+            'fee': 5000,
+            'success': sig.err == null,
+          });
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _recentTransactions = transactions;
+          _networkStatus = 'Loaded ${transactions.length} transactions';
+          _isLoadingTransactions = false;
         });
       }
 
+      print('✅ Transaction history loaded: ${transactions.length} items');
+
     } catch (e) {
-      print('❌ Transaction history loading error: $e');
+      print('❌ Transaction history error: $e');
       if (mounted) {
         setState(() {
-          _transactionCount = 0;
           _recentTransactions = [];
-          _networkStatus = 'Transaction history offline';
+          _networkStatus = 'Transaction loading failed';
+          _isLoadingTransactions = false;
         });
       }
-      rethrow;
+    }
+  }
+
+  void _calculateWalletChanges() {
+    if (_solPrice > 0) {
+      final portfolioValue = _solBalance * _solPrice;
+      _walletDailyChange = portfolioValue * _dailyChange / 100;
+      _walletWeeklyChange = portfolioValue * _weeklyChange / 100;
+      _walletMonthlyChange = portfolioValue * _monthlyChange / 100;
     }
   }
 
   void _copyAddress() {
-    final l10n = AppLocalizations.of(context);
-
     Clipboard.setData(ClipboardData(text: widget.wallet.address));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -532,7 +515,7 @@ class _DashboardPageState extends State<DashboardPage>
           children: [
             const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
-            Text(l10n?.addressCopied ?? 'Address copied to clipboard'),
+            const Text('Address copied to clipboard'),
           ],
         ),
         backgroundColor: const Color(0xFFFF6B35),
@@ -563,7 +546,7 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   String _formatDate(int? blockTime) {
-    if (blockTime == null) return AppLocalizations.of(context)?.unknown ?? 'Unknown';
+    if (blockTime == null) return 'Unknown';
     final date = DateTime.fromMillisecondsSinceEpoch(blockTime * 1000);
     final now = DateTime.now();
     final difference = now.difference(date);
@@ -620,29 +603,217 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
+  Widget _buildTokenBalancesSection(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Token Bakiyeleri',
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_isLoadingTokens) ...[
+          const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+            ),
+          ),
+        ] else if (_tokenBalances.isEmpty) ...[
+          _buildGlassCard(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.token,
+                      size: 48,
+                      color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Henüz token bulunamadı',
+                      style: TextStyle(
+                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Cüzdanınızda token bakiyesi bulunmuyor',
+                      style: TextStyle(
+                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ] else ...[
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _tokenBalances.length,
+            itemBuilder: (context, index) {
+              return _buildTokenItem(_tokenBalances[index], isDark);
+            },
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildTokenItem(Map<String, dynamic> token, bool isDark) {
+    final balance = token['balance'] as double;
+    final symbol = token['symbol'] as String;
+    final name = token['name'] as String;
+    final logoURI = token['logoURI'] as String?;
+    final verified = token['verified'] as bool;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: _buildGlassCard(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              // Token icon
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF6B35).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: logoURI != null
+                    ? ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    logoURI,
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(
+                        Icons.token,
+                        color: Color(0xFFFF6B35),
+                        size: 24,
+                      );
+                    },
+                  ),
+                )
+                    : const Icon(
+                  Icons.token,
+                  color: Color(0xFFFF6B35),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Token info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          symbol,
+                          style: TextStyle(
+                            color: isDark ? Colors.white : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        if (verified) ...[
+                          const SizedBox(width: 6),
+                          const Icon(
+                            Icons.verified,
+                            color: Colors.blue,
+                            size: 16,
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      name,
+                      style: TextStyle(
+                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // Balance
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    balance.toStringAsFixed(6),
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  Text(
+                    symbol,
+                    style: TextStyle(
+                      color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
-    final l10n = AppLocalizations.of(context);
     final totalValue = _solBalance * _solPrice;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
-          ).createShader(bounds),
-          child: Text(
-            l10n?.appTitle ?? 'Viper Wallet',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 22,
+        title: Row(
+          children: [
+            Image.asset(
+              'assets/icon/icon1.png',
+              width: 32,
+              height: 32,
             ),
-          ),
+            const SizedBox(width: 10),
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+              ).createShader(bounds),
+              child: const Text(
+                'Viper Wallet',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 22,
+                ),
+              ),
+            ),
+          ],
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -667,7 +838,7 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  _isNetworkConnected ? (l10n?.online ?? 'Online') : (l10n?.offline ?? 'Offline'),
+                  _isNetworkConnected ? 'Online' : 'Offline',
                   style: TextStyle(
                     color: _isNetworkConnected ? Colors.green : Colors.orange,
                     fontSize: 10,
@@ -675,31 +846,6 @@ class _DashboardPageState extends State<DashboardPage>
                   ),
                 ),
               ],
-            ),
-          ),
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              color: (isDark ? Colors.black : Colors.white).withOpacity(0.3),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: const Color(0xFFFF6B35).withOpacity(0.3),
-              ),
-            ),
-            child: IconButton(
-              onPressed: () {
-                HapticFeedback.lightImpact();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const SettingsPage(),
-                  ),
-                );
-              },
-              icon: const Icon(
-                Icons.settings,
-                color: Color(0xFFFF6B35),
-              ),
             ),
           ),
           Container(
@@ -714,7 +860,6 @@ class _DashboardPageState extends State<DashboardPage>
             child: IconButton(
               onPressed: _isLoading ? null : () {
                 HapticFeedback.mediumImpact();
-                RpcService.resetToFirstEndpoint();
                 _loadAllData();
               },
               icon: RotationTransition(
@@ -764,9 +909,9 @@ class _DashboardPageState extends State<DashboardPage>
                       shape: BoxShape.circle,
                       gradient: const LinearGradient(
                         colors: [
-                          Color(0xFFFF6B35),
-                          Color(0xFFFF8C42),
-                          Color(0xFFFFB347),
+                          Color(0x00FF6B35),
+                          Color(0x00FF8C42),
+                          Color(0x00FFB347),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
@@ -779,35 +924,7 @@ class _DashboardPageState extends State<DashboardPage>
                         ),
                       ],
                     ),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.3),
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.2),
-                          ),
-                          child: const Icon(
-                            Icons.account_balance_wallet,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                        ),
-                      ],
-                    ),
+                    child: Image.asset('assets/icon/icon1.png'),
                   ),
                 ),
               ),
@@ -817,7 +934,7 @@ class _DashboardPageState extends State<DashboardPage>
               ScaleTransition(
                 scale: _pulseAnimation,
                 child: Text(
-                  l10n?.loading ?? 'Loading...',
+                  'Loading Wallet...',
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black87,
                     fontSize: 24,
@@ -847,37 +964,6 @@ class _DashboardPageState extends State<DashboardPage>
                   ),
                 ),
               ),
-
-              const SizedBox(height: 40),
-
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(3, (index) {
-                  return AnimatedBuilder(
-                    animation: _loadingController,
-                    builder: (context, child) {
-                      final delay = index * 0.2;
-                      final animationValue = (_loadingController.value - delay).clamp(0.0, 1.0);
-                      final scale = sin(animationValue * pi) * 0.5 + 0.5;
-
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        child: Transform.scale(
-                          scale: scale,
-                          child: Container(
-                            width: 12,
-                            height: 12,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFFFF6B35).withOpacity(0.7),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                }),
-              ),
             ],
           ),
         )
@@ -891,35 +977,44 @@ class _DashboardPageState extends State<DashboardPage>
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 20),
 
+                    // Ana SOL bakiye kartı
                     FadeTransition(
                       opacity: _cardAnimation,
-                      child: _buildMainBalanceCard(totalValue, isDark, l10n),
+                      child: _buildMainBalanceCard(totalValue, isDark),
                     ),
 
                     const SizedBox(height: 28),
 
-                    _buildQuickActions(l10n),
+                    // Quick actions
+                    _buildQuickActions(),
 
-                    //const SizedBox(height: 40),
+                    const SizedBox(height: 28),
 
-                    // Token List Section
-                    //_buildTokenListSection(isDark),
+                    // Token balances section - Market data'nın hemen üstüne taşındı
+                    //_buildTokenBalancesSection(isDark),
 
-                    const SizedBox(height: 40),
+                    //const SizedBox(height: 28),
 
-                    if (_isNetworkConnected) ...[
-                      _buildMarketDataSection(isDark, l10n),
-                      const SizedBox(height: 28),
-                      _buildPriceChangesSection(isDark, l10n),
+                    // Market data
+                    if (_isNetworkConnected && _solPrice > 0) ...[
+                      _buildMarketDataSection(isDark),
                       const SizedBox(height: 28),
                     ],
 
+                    // Price changes
+                    if (_isNetworkConnected && _solPrice > 0) ...[
+                      _buildPriceChangesSection(isDark),
+                      const SizedBox(height: 28),
+                    ],
+
+                    // Recent transactions
                     if (_recentTransactions.isNotEmpty) ...[
-                      _buildRecentTransactionsSection(isDark, l10n),
+                      _buildRecentTransactionsSection(isDark),
                       const SizedBox(height: 28),
                     ],
 
-                    _buildWalletAddressCard(isDark, l10n),
+                    // Wallet address
+                    _buildWalletAddressCard(isDark),
 
                     const SizedBox(height: 120),
                   ]),
@@ -932,7 +1027,7 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildMainBalanceCard(double totalValue, bool isDark, AppLocalizations? l10n) {
+  Widget _buildMainBalanceCard(double totalValue, bool isDark) {
     return _buildGlassCard(
       gradientColors: [const Color(0xFFFF6B35), const Color(0xFFFF8C42)],
       child: Padding(
@@ -948,10 +1043,10 @@ class _DashboardPageState extends State<DashboardPage>
                     color: Colors.white.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Icon(
-                    Icons.account_balance_wallet,
+                  child: const FaIcon(
+                    FontAwesomeIcons.wallet,
                     color: Colors.white,
-                    size: 28,
+                    size: 24,
                   ),
                 ),
                 const Spacer(),
@@ -965,7 +1060,7 @@ class _DashboardPageState extends State<DashboardPage>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        'Total Portfolio',
+                        'SOL Balance',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.9),
                           fontSize: 11,
@@ -975,7 +1070,7 @@ class _DashboardPageState extends State<DashboardPage>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _formatCurrency(_totalPortfolioValue),
+                      _formatCurrency(totalValue),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -997,78 +1092,64 @@ class _DashboardPageState extends State<DashboardPage>
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              '≈ ${_formatCurrency(totalValue)}',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.9),
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (!_isNetworkConnected) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+            if (_solPrice > 0) ...[
+              Text(
+                '≈ ${_formatCurrency(totalValue)}',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
                 ),
-                child: Row(
+              ),
+              const SizedBox(height: 16),
+              if (_walletDailyChange != 0) ...[
+                Row(
                   children: [
-                    const Icon(Icons.warning, color: Colors.orange, size: 16),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        l10n?.noNetworkConnection ?? 'No network connection. Running in offline mode.',
-                        style: TextStyle(
-                          color: Colors.orange.shade100,
-                          fontSize: 12,
-                        ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FaIcon(
+                            _walletDailyChange >= 0 ? FontAwesomeIcons.arrowTrendUp : FontAwesomeIcons.arrowTrendDown,
+                            color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${_walletDailyChange >= 0 ? '+' : ''}${_formatCurrency(_walletDailyChange)}',
+                            style: TextStyle(
+                              color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '(24h)',
+                            style: TextStyle(
+                              color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.8),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
+              ],
             ] else ...[
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.25),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _walletDailyChange >= 0 ? Icons.trending_up : Icons.trending_down,
-                          color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${_walletDailyChange >= 0 ? '+' : ''}${_formatCurrency(_walletDailyChange)}',
-                          style: TextStyle(
-                            color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '(24h)',
-                          style: TextStyle(
-                            color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.8),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              Text(
+                'Price data loading...',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.7),
+                  fontSize: 16,
+                ),
               ),
             ],
           ],
@@ -1077,109 +1158,85 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildQuickActions(AppLocalizations? l10n) {
-    return RepaintBoundary(
-      child: GridView.count(
-        crossAxisCount: 4,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 0.9,
-        children: [
-          _buildActionButton(
-            icon: Icons.send_rounded,
-            label: l10n?.send ?? 'Send',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SendPage(wallet: widget.wallet),
-                ),
-              );
-            },
-          ),
-          _buildActionButton(
-            icon: Icons.qr_code_rounded,
-            label: l10n?.receive ?? 'Receive',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ReceivePage(wallet: widget.wallet),
-                ),
-              );
-            },
-            color: Colors.green,
-          ),
-          _buildActionButton(
-            icon: Icons.swap_horiz_rounded,
-            label: l10n?.swap ?? 'Swap',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => SwapPage(wallet: widget.wallet),
-                ),
-              );
-            },
-            color: Colors.purple,
-          ),
-          _buildActionButton(
-            icon: Icons.history_rounded,
-            label: l10n?.history ?? 'History',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => TransactionHistoryPage(
-                    wallet: widget.wallet,
-                    transactions: _recentTransactions,
-                  ),
-                ),
-              );
-            },
-            color: Colors.blue,
-          ),
-          _buildActionButton(
-            icon: Icons.image_rounded,
-            label: l10n?.nft ?? 'NFT',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => NFTPage(wallet: widget.wallet),
-                ),
-              );
-            },
-            color: Colors.pink,
-          ),
-          _buildActionButton(
-            icon: Icons.show_chart_rounded,
-            label: l10n?.charts ?? 'Charts',
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChartsPage(
-                    solPrice: _solPrice,
-                    dailyChange: _dailyChange,
-                    weeklyChange: _weeklyChange,
-                    monthlyChange: _monthlyChange,
-                  ),
-                ),
-              );
-            },
-            color: Colors.teal,
-          ),
-        ],
-      ),
+  Widget _buildQuickActions() {
+    return GridView.count(
+      crossAxisCount: 3,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      childAspectRatio: 0.9,
+      children: [
+        _buildActionButton(
+          icon: FontAwesomeIcons.paperPlane,
+          label: 'Send',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => FixedSendPage(wallet: widget.wallet),
+              ),
+            );
+          },
+        ),
+        _buildActionButton(
+          icon: FontAwesomeIcons.qrcode,
+          label: 'Receive',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ReceivePage(wallet: widget.wallet),
+              ),
+            );
+          },
+          color: Colors.green,
+        ),
+        _buildActionButton(
+          icon: FontAwesomeIcons.rightLeft,
+          label: 'Swap',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => SwapPage(wallet: widget.wallet),
+              ),
+            );
+          },
+          color: Colors.purple,
+        ),
+        _buildActionButton(
+          icon: FontAwesomeIcons.images,
+          label: 'NFT',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => NFTPage(wallet: widget.wallet),
+              ),
+            );
+          },
+          color: Colors.blue,
+        ),
+        _buildActionButton(
+          icon: FontAwesomeIcons.chartLine,
+          label: 'Charts',
+          onTap: () {
+            HapticFeedback.lightImpact();
+            // Navigator.push(
+            //   context,
+            //   MaterialPageRoute(
+            //     builder: (context) => ChartsPage(),
+            //   ),
+            // );
+          },
+          color: Colors.amber,
+        ),
+      ],
     );
   }
 
@@ -1201,18 +1258,18 @@ class _DashboardPageState extends State<DashboardPage>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
+              FaIcon(
                 icon,
                 color: Colors.white,
                 size: 20,
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 8),
               Flexible(
                 child: Text(
                   label,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
                   textAlign: TextAlign.center,
@@ -1227,324 +1284,12 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildTokenListSection(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Your Tokens',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF6B35).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: const Color(0xFFFF6B35).withOpacity(0.3),
-                ),
-              ),
-              child: Text(
-                '${_tokens.length} tokens',
-                style: const TextStyle(
-                  color: Color(0xFFFF6B35),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        if (_isLoadingTokens)
-          _buildGlassCard(
-            child: const Padding(
-              padding: EdgeInsets.all(40),
-              child: Center(
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(
-                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Loading tokens...',
-                      style: TextStyle(
-                        color: Color(0xFFFF6B35),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          )
-        else if (_tokens.isEmpty)
-          _buildGlassCard(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.token,
-                      size: 48,
-                      color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No tokens found',
-                      style: TextStyle(
-                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Your tokens will appear here',
-                      style: TextStyle(
-                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          )
-        else
-          RepaintBoundary(
-            child: ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _tokens.length,
-              itemBuilder: (context, index) {
-                return _buildTokenItem(_tokens[index], isDark);
-              },
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildTokenItem(TokenInfo token, bool isDark) {
-    final tokenValue = token.price != null ? token.balance * token.price! : 0.0;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: _buildGlassCard(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Token Logo
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFFF6B35).withOpacity(0.1),
-                  border: Border.all(
-                    color: const Color(0xFFFF6B35).withOpacity(0.2),
-                  ),
-                ),
-                child: token.logoUri != null
-                    ? ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.network(
-                    token.logoUri!,
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _buildTokenFallbackIcon(token.symbol);
-                    },
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              Color(0xFFFF6B35),
-                            ),
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                                : null,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                )
-                    : _buildTokenFallbackIcon(token.symbol),
-              ),
-
-              const SizedBox(width: 16),
-
-              // Token Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            token.name,
-                            style: TextStyle(
-                              color: isDark ? Colors.white : Colors.black87,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (token.change24h != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: (token.change24h! >= 0 ? Colors.green : Colors.red)
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  token.change24h! >= 0
-                                      ? Icons.trending_up
-                                      : Icons.trending_down,
-                                  color: token.change24h! >= 0 ? Colors.green : Colors.red,
-                                  size: 12,
-                                ),
-                                const SizedBox(width: 2),
-                                Text(
-                                  '${token.change24h! >= 0 ? '+' : ''}${token.change24h!.toStringAsFixed(1)}%',
-                                  style: TextStyle(
-                                    color: token.change24h! >= 0 ? Colors.green : Colors.red,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          token.symbol,
-                          style: TextStyle(
-                            color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (token.price != null)
-                          Text(
-                            '\$${token.price!.toStringAsFixed(4)}',
-                            style: TextStyle(
-                              color: (isDark ? Colors.white : Colors.black87).withOpacity(0.6),
-                              fontSize: 11,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(width: 16),
-
-              // Balance and Value
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    token.balance.toStringAsFixed(token.decimals > 6 ? 6 : token.decimals),
-                    style: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  if (token.price != null)
-                    Text(
-                      _formatCurrency(tokenValue),
-                      style: TextStyle(
-                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    )
-                  else
-                    Text(
-                      'Price N/A',
-                      style: TextStyle(
-                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
-                        fontSize: 11,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTokenFallbackIcon(String symbol) {
-    return Container(
-      width: 48,
-      height: 48,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFFF6B35),
-            const Color(0xFFFF8C42),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: Center(
-        child: Text(
-          symbol.length > 3 ? symbol.substring(0, 3) : symbol,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMarketDataSection(bool isDark, AppLocalizations? l10n) {
+  Widget _buildMarketDataSection(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          l10n?.marketData ?? 'Market Data',
+          'Market Data',
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black87,
             fontSize: 20,
@@ -1552,53 +1297,39 @@ class _DashboardPageState extends State<DashboardPage>
           ),
         ),
         const SizedBox(height: 16),
-        RepaintBoundary(
-          child: GridView.count(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.2,
-            children: [
-              _buildStatCard(
-                title: l10n?.solPrice ?? 'SOL Price',
-                value: '\$${_solPrice.toStringAsFixed(2)}',
-                icon: Icons.monetization_on,
-                color: const Color(0xFFFF6B35),
-                changeValue: _dailyChange,
-              ),
-              _buildStatCard(
-                title: l10n?.dailyVolume ?? 'Daily Volume',
-                value: _formatCurrency(_dailyVolume),
-                icon: Icons.bar_chart,
-                color: Colors.blue,
-              ),
-              _buildStatCard(
-                title: l10n?.marketCap ?? 'Market Cap',
-                value: _formatCurrency(_marketCap),
-                icon: Icons.account_balance,
-                color: Colors.green,
-              ),
-              _buildStatCard(
-                title: l10n?.transactionCount ?? 'Transactions',
-                value: _transactionCount.toString(),
-                icon: Icons.receipt_long,
-                color: Colors.purple,
-              ),
-            ],
-          ),
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.2,
+          children: [
+            _buildStatCard(
+              title: 'SOL Price',
+              value: '\$${_solPrice.toStringAsFixed(2)}',
+              icon: FontAwesomeIcons.dollarSign,
+              color: const Color(0xFFFF6B35),
+              changeValue: _dailyChange,
+            ),
+            _buildStatCard(
+              title: 'Market Cap',
+              value: _formatCurrency(_marketCap),
+              icon: FontAwesomeIcons.buildingColumns,
+              color: Colors.green,
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildPriceChangesSection(bool isDark, AppLocalizations? l10n) {
+  Widget _buildPriceChangesSection(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          l10n?.priceChanges ?? 'Price Changes',
+          'Price Changes',
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black87,
             fontSize: 20,
@@ -1606,41 +1337,39 @@ class _DashboardPageState extends State<DashboardPage>
           ),
         ),
         const SizedBox(height: 16),
-        RepaintBoundary(
-          child: GridView.count(
-            crossAxisCount: 2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 0.8,
-            children: [
-              _buildPriceChangeCard(
-                period: l10n?.twentyFourHours ?? '24 Hours',
-                percentage: _dailyChange,
-                walletChange: _walletDailyChange,
-                icon: Icons.today,
-              ),
-              _buildPriceChangeCard(
-                period: l10n?.sevenDays ?? '7 Days',
-                percentage: _weeklyChange,
-                walletChange: _walletWeeklyChange,
-                icon: Icons.date_range,
-              ),
-              _buildPriceChangeCard(
-                period: l10n?.thirtyDays ?? '30 Days',
-                percentage: _monthlyChange,
-                walletChange: _walletMonthlyChange,
-                icon: Icons.calendar_month,
-              ),
-            ],
-          ),
+        GridView.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 0.8,
+          children: [
+            _buildPriceChangeCard(
+              period: '24 Hours',
+              percentage: _dailyChange,
+              walletChange: _walletDailyChange,
+              icon: FontAwesomeIcons.clock,
+            ),
+            _buildPriceChangeCard(
+              period: '7 Days',
+              percentage: _weeklyChange,
+              walletChange: _walletWeeklyChange,
+              icon: FontAwesomeIcons.calendarDay,
+            ),
+            _buildPriceChangeCard(
+              period: '30 Days',
+              percentage: _monthlyChange,
+              walletChange: _walletMonthlyChange,
+              icon: FontAwesomeIcons.calendarDays,
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildRecentTransactionsSection(bool isDark, AppLocalizations? l10n) {
+  Widget _buildRecentTransactionsSection(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1648,7 +1377,7 @@ class _DashboardPageState extends State<DashboardPage>
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              l10n?.recentTransactions ?? 'Recent Transactions',
+              'Recent Transactions',
               style: TextStyle(
                 color: isDark ? Colors.white : Colors.black87,
                 fontSize: 20,
@@ -1667,29 +1396,35 @@ class _DashboardPageState extends State<DashboardPage>
                   ),
                 );
               },
-              child: Text(
-                l10n?.viewAll ?? 'View All',
-                style: const TextStyle(color: Color(0xFFFF6B35)),
+              child: const Text(
+                'View All',
+                style: TextStyle(color: Color(0xFFFF6B35)),
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
-        RepaintBoundary(
-          child: ListView.builder(
+        if (_isLoadingTransactions) ...[
+          const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+            ),
+          ),
+        ] else ...[
+          ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _recentTransactions.length > 3 ? 3 : _recentTransactions.length,
+            itemCount: _recentTransactions.length > 5 ? 5 : _recentTransactions.length,
             itemBuilder: (context, index) {
-              return _buildTransactionItem(_recentTransactions[index], isDark, l10n);
+              return _buildTransactionItem(_recentTransactions[index], isDark);
             },
           ),
-        ),
+        ],
       ],
     );
   }
 
-  Widget _buildWalletAddressCard(bool isDark, AppLocalizations? l10n) {
+  Widget _buildWalletAddressCard(bool isDark) {
     return _buildGlassCard(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -1704,15 +1439,15 @@ class _DashboardPageState extends State<DashboardPage>
                     color: const Color(0xFFFF6B35).withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
-                    Icons.account_balance_wallet,
+                  child: const FaIcon(
+                    FontAwesomeIcons.addressCard,
                     color: Color(0xFFFF6B35),
-                    size: 20,
+                    size: 18,
                   ),
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  l10n?.walletAddress ?? 'Wallet Address',
+                  'Wallet Address',
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black87,
                     fontSize: 16,
@@ -1726,9 +1461,10 @@ class _DashboardPageState extends State<DashboardPage>
                       _showFullAddress = !_showFullAddress;
                     });
                   },
-                  icon: Icon(
-                    _showFullAddress ? Icons.visibility_off : Icons.visibility,
+                  icon: FaIcon(
+                    _showFullAddress ? FontAwesomeIcons.eyeSlash : FontAwesomeIcons.eye,
                     color: const Color(0xFFFF6B35),
+                    size: 18,
                   ),
                 ),
               ],
@@ -1758,10 +1494,10 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Icon(
-                      Icons.copy,
+                    const FaIcon(
+                      FontAwesomeIcons.copy,
                       color: Color(0xFFFF6B35),
-                      size: 18,
+                      size: 16,
                     ),
                   ],
                 ),
@@ -1778,15 +1514,12 @@ class _DashboardPageState extends State<DashboardPage>
     required String value,
     required IconData icon,
     Color? color,
-    bool isLoading = false,
-    String? subtitle,
     double? changeValue,
-    Widget? trailing,
   }) {
     return _buildGlassCard(
       gradientColors: [color ?? const Color(0xFFFF6B35), const Color(0xFFFF8C42)],
       child: Padding(
-        padding: const EdgeInsets.all(9),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1798,23 +1531,14 @@ class _DashboardPageState extends State<DashboardPage>
                     color: Colors.white.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
+                  child: FaIcon(
                     icon,
                     color: Colors.white,
-                    size: 22,
+                    size: 20,
                   ),
                 ),
                 const Spacer(),
-                if (isLoading)
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                else if (changeValue != null)
+                if (changeValue != null)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
@@ -1824,10 +1548,10 @@ class _DashboardPageState extends State<DashboardPage>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          changeValue >= 0 ? Icons.trending_up : Icons.trending_down,
+                        FaIcon(
+                          changeValue >= 0 ? FontAwesomeIcons.arrowUp : FontAwesomeIcons.arrowDown,
                           color: changeValue >= 0 ? Colors.green : Colors.red,
-                          size: 14,
+                          size: 12,
                         ),
                         const SizedBox(width: 2),
                         Text(
@@ -1840,30 +1564,18 @@ class _DashboardPageState extends State<DashboardPage>
                         ),
                       ],
                     ),
-                  )
-                else if (trailing != null)
-                    trailing,
+                  ),
               ],
             ),
             const SizedBox(height: 16),
-            if (isLoading)
-              Container(
-                height: 24,
-                width: 100,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-              )
-            else
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
+            ),
             const SizedBox(height: 6),
             Text(
               title,
@@ -1873,17 +1585,6 @@ class _DashboardPageState extends State<DashboardPage>
                 fontWeight: FontWeight.w500,
               ),
             ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 11,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
           ],
         ),
       ),
@@ -1915,10 +1616,10 @@ class _DashboardPageState extends State<DashboardPage>
                     color: Colors.white.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(
+                  child: FaIcon(
                     icon,
                     color: Colors.white,
-                    size: 18,
+                    size: 16,
                   ),
                 ),
                 const Spacer(),
@@ -1928,10 +1629,10 @@ class _DashboardPageState extends State<DashboardPage>
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(
-                    isPositive ? Icons.trending_up : Icons.trending_down,
+                  child: FaIcon(
+                    isPositive ? FontAwesomeIcons.arrowTrendUp : FontAwesomeIcons.arrowTrendDown,
                     color: Colors.white,
-                    size: 16,
+                    size: 14,
                   ),
                 ),
               ],
@@ -1977,8 +1678,9 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> tx, bool isDark, AppLocalizations? l10n) {
-    final isSuccess = tx['err'] == null;
+  Widget _buildTransactionItem(Map<String, dynamic> tx, bool isDark) {
+    final isSuccess = tx['success'] ?? (tx['err'] == null);
+    final fee = tx['fee'] ?? 5000;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1993,10 +1695,10 @@ class _DashboardPageState extends State<DashboardPage>
                   color: (isSuccess ? Colors.green : Colors.red).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  isSuccess ? Icons.check_circle : Icons.error,
+                child: FaIcon(
+                  isSuccess ? FontAwesomeIcons.circleCheck : FontAwesomeIcons.circleExclamation,
                   color: isSuccess ? Colors.green : Colors.red,
-                  size: 20,
+                  size: 18,
                 ),
               ),
               const SizedBox(width: 16),
@@ -2013,12 +1715,24 @@ class _DashboardPageState extends State<DashboardPage>
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      _formatDate(tx['blockTime']),
-                      style: TextStyle(
-                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                        fontSize: 12,
-                      ),
+                    Row(
+                      children: [
+                        Text(
+                          _formatDate(tx['blockTime']),
+                          style: TextStyle(
+                            color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Fee: ${(fee / lamportsPerSol).toStringAsFixed(6)} SOL',
+                          style: TextStyle(
+                            color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -2030,7 +1744,7 @@ class _DashboardPageState extends State<DashboardPage>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  isSuccess ? (l10n?.successful ?? 'Success') : (l10n?.failed ?? 'Failed'),
+                  isSuccess ? 'Success' : 'Failed',
                   style: TextStyle(
                     color: isSuccess ? Colors.green : Colors.red,
                     fontSize: 10,

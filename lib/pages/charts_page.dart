@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../l10n/app_localizations.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class ChartsPage extends StatefulWidget {
   final double solPrice;
@@ -39,7 +39,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
   List<Map<String, dynamic>> _realTimeData = [];
   DateTime _lastUpdate = DateTime.now();
 
-  // ScrollController for the chart
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -59,7 +58,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
     );
     _animationController.forward();
 
-    // Start real-time updates
     _startRealTimeUpdates();
   }
 
@@ -75,7 +73,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
     _updateTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
       _fetchRealTimeData();
     });
-    // İlk veriyi hemen yükle
     _fetchRealTimeData();
   }
 
@@ -102,19 +99,16 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
           _currentMonthlyChange = data['solana']['usd_30d_change']?.toDouble() ?? 0.0;
           _lastUpdate = DateTime.now();
 
-          // Add to real-time data for chart with timestamp
           _realTimeData.add({
             'price': newPrice,
             'timestamp': DateTime.now(),
           });
 
-          // Keep only last 100 data points
           if (_realTimeData.length > 100) {
             _realTimeData.removeAt(0);
           }
         });
 
-        // Auto scroll to end
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
@@ -123,7 +117,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
           );
         }
 
-        // Restart animation for smooth update
         _animationController.reset();
         _animationController.forward();
       } else {
@@ -131,7 +124,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
       }
     } catch (e) {
       print('Real-time data fetch error: $e');
-      // ✅ DÜZELTME: Hata durumunda mevcut fiyatı kullan
       setState(() {
         _realTimeData.add({
           'price': _currentPrice,
@@ -146,7 +138,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
   }
 
   String _getLastUpdateTime() {
-    final l10n = AppLocalizations.of(context)!;
     final now = DateTime.now();
     final difference = now.difference(_lastUpdate);
 
@@ -280,14 +271,10 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
   }
 
   Widget _buildChart() {
-    final l10n = AppLocalizations.of(context)!;
     final data = _generateChartData();
     if (data.isEmpty) {
       return Center(
-        child: Text(
-          l10n.loading,
-          style: const TextStyle(color: Colors.grey),
-        ),
+        child: Text(''),
       );
     }
 
@@ -304,7 +291,7 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
             controller: _scrollController,
             scrollDirection: Axis.horizontal,
             child: Container(
-              width: data.length * 15.0, // 15 pixel per data point
+              width: data.length * 15.0,
               child: CustomPaint(
                 size: Size(data.length * 15.0, 250),
                 painter: ChartPainter(
@@ -393,7 +380,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final change = _getChangeForPeriod();
     final isPositive = change >= 0;
@@ -402,7 +388,7 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text(
-          l10n.charts,
+          'charts'.tr(),
           style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
@@ -465,7 +451,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
               children: [
                 const SizedBox(height: 20),
 
-                // Fiyat kartı
                 _buildGlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -487,7 +472,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
                               ),
                             ),
                             const Spacer(),
-                            // Real-time indicator
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
@@ -558,7 +542,7 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
                         Row(
                           children: [
                             Text(
-                              '${l10n.sol}/${l10n.usd}',
+                              '${'sol'}/${'usd'}',
                               style: TextStyle(
                                 color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                                 fontSize: 16,
@@ -581,12 +565,10 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
 
                 const SizedBox(height: 24),
 
-                // Period selector
                 _buildPeriodSelector(),
 
                 const SizedBox(height: 24),
 
-                // Chart
                 _buildGlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -631,7 +613,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
 
                 const SizedBox(height: 24),
 
-                // Stats
                 Row(
                   children: [
                     Expanded(
@@ -684,7 +665,6 @@ class _ChartsPageState extends State<ChartsPage> with TickerProviderStateMixin {
 
                 const SizedBox(height: 16),
 
-                // Data points info
                 _buildGlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -814,11 +794,9 @@ class ChartPainter extends CustomPainter {
         fillPath.lineTo(x, y);
       }
 
-      // Stop drawing based on animation progress
       if (i / (data.length - 1) > progress) break;
     }
 
-    // Complete the fill path
     final lastIndex = (data.length * progress).floor();
     if (lastIndex > 0 && lastIndex < data.length) {
       final lastX = lastIndex * stepX;
@@ -826,13 +804,10 @@ class ChartPainter extends CustomPainter {
     }
     fillPath.close();
 
-    // Draw gradient fill
     canvas.drawPath(fillPath, gradientPaint);
 
-    // Draw line
     canvas.drawPath(path, paint);
 
-    // Draw dots and prices
     final dotPaint = Paint()
       ..color = isPositive ? Colors.green : Colors.red
       ..style = PaintingStyle.fill;
@@ -858,23 +833,19 @@ class ChartPainter extends CustomPainter {
 
       if (x.isNaN || y.isNaN || x.isInfinite || y.isInfinite) continue;
 
-      // Draw dots every few points
       if (i % 3 == 0) {
         canvas.drawCircle(Offset(x, y), 2.5, dotPaint);
       }
 
-      // Show prices only for 1H period and every 5th point
       if (showPrices && i % 5 == 0) {
         final textPainter = TextPainter(
           text: TextSpan(
             text: '\$${data[i].toStringAsFixed(2)}',
             style: textStyle,
           ),
-          textDirection: TextDirection.ltr,
         );
         textPainter.layout();
 
-        // Position text above the point
         final textX = x - textPainter.width / 2;
         final textY = y - textPainter.height - 8;
 
@@ -884,18 +855,15 @@ class ChartPainter extends CustomPainter {
       }
     }
 
-    // Draw grid lines
     final gridPaint = Paint()
       ..color = Colors.grey.withOpacity(0.2)
       ..strokeWidth = 0.5;
 
-    // Horizontal grid lines
     for (int i = 0; i <= 4; i++) {
       final y = (size.height / 4) * i;
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
-    // Vertical grid lines
     for (int i = 0; i <= 4; i++) {
       final x = (size.width / 4) * i;
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);

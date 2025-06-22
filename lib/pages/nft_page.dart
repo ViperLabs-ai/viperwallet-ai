@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:solana/dto.dart';
 import 'package:solana/solana.dart';
 import 'package:http/http.dart' as http;
+import 'package:easy_localization/easy_localization.dart';
 import '../services/rpc_service.dart';
 
 class NFTPage extends StatefulWidget {

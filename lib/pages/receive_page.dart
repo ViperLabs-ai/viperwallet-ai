@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:solana/solana.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class ReceivePage extends StatefulWidget {
   final Ed25519HDKeyPair wallet;

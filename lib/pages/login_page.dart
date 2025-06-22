@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:solana/solana.dart';
 import 'package:provider/provider.dart';
-import '../l10n/app_localizations.dart';
+import 'package:easy_localization/easy_localization.dart';
 import '../providers/app_provider.dart';
 import '../security/wallet_security.dart';
 import 'dashboard_page.dart';
@@ -58,10 +58,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Future<void> _login() async {
-    final l10n = AppLocalizations.of(context)!;
-
     if (_mnemonicController.text.trim().isEmpty) {
-      _showErrorSnackBar(l10n.mnemonicRequired);
+      _showErrorSnackBar('mnemonicRequired'.tr());
       return;
     }
 
@@ -71,13 +69,13 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       // Security validation
       final isSecure = await WalletSecurity.validateEnvironment();
       if (!isSecure) {
-        throw Exception(l10n.unsecureEnvironment);
+        throw Exception('unsecureEnvironment'.tr());
       }
 
       // Validate mnemonic
       final mnemonic = _mnemonicController.text.trim();
       if (!WalletSecurity.validateMnemonic(mnemonic)) {
-        throw Exception(l10n.invalidMnemonic);
+        throw Exception('invalidMnemonic'.tr());
       }
 
       // Create wallet from mnemonic
@@ -96,7 +94,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
       }
     } catch (e) {
       if (mounted) {
-        _showErrorSnackBar('${l10n.loginError}: ${e.toString()}');
+        _showErrorSnackBar('${'loginError'.tr()}: ${e.toString()}');
       }
     } finally {
       if (mounted) {
@@ -118,7 +116,6 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -162,25 +159,21 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               gradient: const LinearGradient(
-                                colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+                                colors: [Color(0x00111111), Color(0x00111111)],
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFFFF6B35).withOpacity(0.3),
+                                  color: const Color(0xFFFF6B35).withOpacity(0.2),
                                   blurRadius: 20,
                                   spreadRadius: 5,
                                 ),
                               ],
                             ),
-                            child: const Icon(
-                              Icons.account_balance_wallet,
-                              color: Colors.white,
-                              size: 60,
-                            ),
+                            child: Image.asset('assets/icon/icon1.png')
                           ),
                           const SizedBox(height: 24),
                           Text(
-                            l10n.appTitle,
+                            'appTitle'.tr(),
                             style: TextStyle(
                               color: isDark ? Colors.white : Colors.black87,
                               fontSize: 32,
@@ -189,7 +182,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            l10n.welcome,
+                            'welcome'.tr(),
                             style: TextStyle(
                               color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                               fontSize: 16,
@@ -216,7 +209,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              l10n.mnemonicPhrase,
+                              'mnemonicPhrase'.tr(),
                               style: TextStyle(
                                 color: isDark ? Colors.white : Colors.black87,
                                 fontSize: 16,
@@ -234,8 +227,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                               ),
                               decoration: InputDecoration(
                                 hintText: _showMnemonic
-                                    ? l10n.mnemonicHintExpanded
-                                    : l10n.mnemonicHint,
+                                    ? 'mnemonicHintExpanded'.tr()
+                                    : 'mnemonicHint'.tr(),
                                 hintStyle: TextStyle(
                                   color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
                                 ),
@@ -296,7 +289,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                           )
                               : Text(
-                            l10n.login,
+                            'login'.tr(),
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 18,
@@ -328,7 +321,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                l10n.securityInfo,
+                                'securityInfo'.tr(),
                                 style: const TextStyle(
                                   color: Colors.blue,
                                   fontSize: 12,

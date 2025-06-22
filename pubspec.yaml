@@ -36,6 +36,7 @@ dependencies:
   bs58: ^1.0.2
   bip39: ^1.0.6
   ed25519_hd_key: ^2.2.0
+  easy_localization: ^3.0.3
 
   # UI & Charts
   fl_chart: ^0.66.0
@@ -52,6 +53,8 @@ dependencies:
   package_info_plus: ^4.2.0
   device_info_plus: ^9.1.1
   local_auth: ^2.1.7
+  font_awesome_flutter: ^10.8.0
+
 
 dependency_overrides:
   pinenacl: ^0.6.0
@@ -60,6 +63,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+  cryptography: ^2.7.0
+
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21
 
 flutter:
   generate: true
@@ -68,7 +80,9 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/icon/
     - assets/animations/
+    - assets/translations/
 
   fonts:
     - family: Poppins
