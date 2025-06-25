@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:async';
 import 'dart:ui';
 import 'dart:typed_data';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -43,7 +44,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
   double _networkFee = 0.0;
 
   Map<String, double> _tokenBalances = {};
-  List<TokenInfo> _allTokens = []; // Tüm tokenları burada saklayacağız
+  List<TokenInfo> _allTokens = []; // We will store all tokens here
 
   final Map<String, TokenInfo> _predefinedTokens = {
     'SOL': TokenInfo(
@@ -59,7 +60,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
   Map<String, dynamic>? _currentQuote;
   Timer? _quoteRefreshTimer;
 
-  // Güncellenmiş RPC endpoints - daha güvenilir olanlar
+  // Updated RPC endpoints - more reliable ones
   final List<Map<String, dynamic>> _rpcEndpoints = [
     {
       'url': 'https://api.mainnet-beta.solana.com',
@@ -78,7 +79,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     },
   ];
 
-  // Güncellenmiş ve genişletilmiş popüler tokenlar listesi
+  // Updated and extended list of popular tokens
   final List<Map<String, dynamic>> _popularTokens = [
     {
       'symbol': 'USDC',
@@ -151,14 +152,14 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     super.initState();
     _initializeAnimations();
     _fromAmountController.addListener(_onAmountChanged);
-    _loadAllTokens(); // Token listesini yükle
+    _loadAllTokens(); // Load token list
     _loadTokenBalances();
     _logWalletInfo();
   }
 
   void _logWalletInfo() {
-    debugPrint('🔑 Mevcut Cüzdan Adresi: ${widget.wallet.address}');
-    debugPrint('🔑 Cüzdan Public Key: ${widget.wallet.publicKey}');
+    debugPrint('🔑 Current Wallet Address: ${widget.wallet.address}');
+    debugPrint('🔑 Wallet Public Key: ${widget.wallet.publicKey}');
   }
 
   void _initializeAnimations() {
@@ -218,10 +219,10 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // Tüm tokenları yükle - Jupiter token listesinden
+  // Load all tokens - from Jupiter token list
   Future<void> _loadAllTokens() async {
     try {
-      debugPrint('🔍 Token listesi yükleniyor...');
+      debugPrint('🔍 Loading token list...');
 
       final response = await http.get(
         Uri.parse('https://token.jup.ag/all'),
@@ -245,11 +246,11 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
           )).toList();
         });
 
-        debugPrint('✅ ${_allTokens.length} token yüklendi');
+        debugPrint('✅ ${_allTokens.length} tokens loaded');
       }
     } catch (e) {
-      debugPrint('❌ Token listesi yükleme hatası: $e');
-      // Hata durumunda popüler tokenları kullan
+      debugPrint('❌ Token list loading error: $e');
+      // If error, use popular tokens
       setState(() {
         _allTokens = _popularTokens.map((token) => TokenInfo(
           address: token['address'],
@@ -262,7 +263,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     }
   }
 
-  // Glassmorphism container widget'ı
+  // Glassmorphism container widget
   Widget _buildGlassContainer({
     required Widget child,
     double? width,
@@ -313,7 +314,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     );
   }
 
-  // Başarı dialog'u göster
+  // Show success dialog
   void _showSuccessDialog(String title, String message) {
     showDialog(
       context: context,
@@ -371,7 +372,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text('Tamam'),
+                      child: Text('OK'.tr()), // Translated from 'Tamam'
                     ),
                   ),
                 ],
@@ -383,7 +384,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     );
   }
 
-  // Hata dialog'u göster
+  // Show error dialog
   void _showErrorDialog(String title, String message) {
     showDialog(
       context: context,
@@ -441,7 +442,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text('Tamam'),
+                      child: Text('OK'.tr()), // Translated from 'Tamam'
                     ),
                   ),
                 ],
@@ -459,7 +460,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     setState(() => _isLoadingBalances = true);
 
     try {
-      debugPrint('🔍 Cüzdan bakiyesi yükleniyor: ${widget.wallet.address}');
+      debugPrint('🔍 Loading wallet balance: ${widget.wallet.address}');
 
       for (final endpoint in _rpcEndpoints) {
         try {
@@ -478,7 +479,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
             final data = json.decode(response.body);
             if (data['result'] != null) {
               final balance = data['result']['value'] / 1000000000.0;
-              debugPrint('💰 Bakiye yüklendi ${endpoint['name']}: $balance SOL');
+              debugPrint('💰 Balance loaded from ${endpoint['name']}: $balance SOL');
 
               if (mounted) {
                 setState(() {
@@ -489,14 +490,14 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
             }
           }
         } catch (e) {
-          debugPrint('❌ Bakiye hatası ${endpoint['name']}: $e');
+          debugPrint('❌ Balance error from ${endpoint['name']}: $e');
           continue;
         }
       }
     } catch (e) {
-      debugPrint('❌ Bakiye yükleme hatası: $e');
+      debugPrint('❌ Balance loading error: $e');
       if (mounted) {
-        _showErrorDialog('Bakiye Hatası', 'Cüzdan bakiyesi yüklenemedi. Lütfen tekrar deneyin.');
+        _showErrorDialog('Balance Error', 'Could not load wallet balance. Please try again.'); // Translated
       }
     }
 
@@ -553,8 +554,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     });
 
     _showSuccessDialog(
-      'Token Eklendi',
-      '${token.name} (${token.symbol}) başarıyla eklendi ve seçildi.',
+      'Token Added'.tr(), // Translated from 'Token Eklendi'
+      '${token.name} (${token.symbol}) successfully added and selected.', // Translated
     );
 
     if (_fromAmountController.text.isNotEmpty && _fromAmountController.text != '0') {
@@ -562,19 +563,19 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     }
   }
 
-  // GELİŞTİRİLMİŞ TOKEN EKLEME FONKSİYONU
+  // ENHANCED TOKEN ADDITION FUNCTION
   Future<void> _addTokenByAddress() async {
     final address = _contractAddressController.text.trim();
 
     if (address.isEmpty) {
-      _showErrorDialog('Eksik Bilgi', 'Lütfen token contract adresini girin.');
+      _showErrorDialog('Missing Information', 'Please enter the token contract address.'.tr()); // Translated
       return;
     }
 
     if (!_isValidSolanaAddress(address)) {
       _showErrorDialog(
-        'Geçersiz Adres',
-        'Girdiğiniz adres geçerli bir Solana token adresi değil. Lütfen kontrol edin.',
+        'Invalid Address'.tr(), // Translated
+        'The address you entered is not a valid Solana token address. Please check.'.tr(), // Translated
       );
       return;
     }
@@ -582,22 +583,22 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     setState(() => _isAddingToken = true);
 
     try {
-      debugPrint('🔍 Token aranıyor: $address');
+      debugPrint('🔍 Searching for token: $address');
 
       TokenInfo? foundToken;
 
-      // 1. Önce yüklenen token listesinde ara
+      // 1. First search in the loaded token list
       for (final token in _allTokens) {
         if (token.address.toLowerCase() == address.toLowerCase()) {
           foundToken = token;
-          debugPrint('✅ Token listede bulundu: ${token.name}');
+          debugPrint('✅ Token found in list: ${token.name}');
           break;
         }
       }
 
-      // 2. Listede bulunamazsa Jupiter API'den ara
+      // 2. If not found in list, search from Jupiter API
       if (foundToken == null) {
-        debugPrint('🔍 Jupiter API\'den token bilgileri alınıyor...');
+        debugPrint('🔍 Getting token information from Jupiter API...');
 
         for (int attempt = 1; attempt <= 3; attempt++) {
           try {
@@ -617,23 +618,23 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
               foundToken = TokenInfo(
                 address: tokenData['address'] ?? address,
-                name: tokenData['name'] ?? 'Bilinmeyen Token',
+                name: tokenData['name'] ?? 'Unknown Token', // Translated
                 symbol: tokenData['symbol'] ?? 'UNKNOWN',
                 decimals: tokenData['decimals'] ?? 6,
                 logoURI: tokenData['logoURI'],
                 verified: (tokenData['tags'] as List?)?.contains('verified') ?? false,
               );
 
-              debugPrint('✅ Jupiter API\'den token bilgileri alındı: ${foundToken.name}');
+              debugPrint('✅ Token information received from Jupiter API: ${foundToken.name}');
               break;
             } else if (response.statusCode == 404) {
-              debugPrint('Token Jupiter API\'de bulunamadı');
+              debugPrint('Token not found in Jupiter API'); // Translated
               break;
             } else if (attempt < 3) {
               await Future.delayed(Duration(seconds: attempt * 2));
             }
           } catch (e) {
-            debugPrint('❌ Jupiter API denemesi $attempt başarısız: $e');
+            debugPrint('❌ Jupiter API attempt $attempt failed: $e'); // Translated
             if (attempt < 3) {
               await Future.delayed(Duration(seconds: attempt));
             }
@@ -641,9 +642,9 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
         }
       }
 
-      // 3. Hala bulunamazsa RPC'den temel bilgileri al
+      // 3. If still not found, get basic info from RPC
       if (foundToken == null) {
-        debugPrint('🔍 RPC\'den token kontrol ediliyor...');
+        debugPrint('🔍 Checking token from RPC...'); // Translated
 
         for (final endpoint in _rpcEndpoints) {
           try {
@@ -671,16 +672,16 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                   address: address,
                   name: shortName,
                   symbol: shortSymbol,
-                  decimals: 6, // Varsayılan
+                  decimals: 6, // Default
                   verified: false,
                 );
 
-                debugPrint('✅ RPC\'den temel token bilgileri alındı');
+                debugPrint('✅ Basic token information received from RPC'.tr()); // Translated
                 break;
               }
             }
           } catch (e) {
-            debugPrint('❌ RPC hatası ${endpoint['name']}: $e');
+            debugPrint('❌ RPC error from ${endpoint['name']}: $e'); // Translated
             continue;
           }
         }
@@ -694,28 +695,28 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
         });
 
         _showSuccessDialog(
-          'Token Başarıyla Eklendi',
-          '${foundToken.name} (${foundToken.symbol}) başarıyla eklendi.\n\n'
-              'Adres: ${address.substring(0, 8)}...${address.substring(address.length - 8)}\n'
-              'Onaylanmış: ${foundToken.verified ? 'Evet' : 'Hayır'}',
+          'Token Successfully Added'.tr(), // Translated
+          '${foundToken.name} (${foundToken.symbol}) has been successfully added.\n\n' // Translated
+              'Address: ${address.substring(0, 8)}...${address.substring(address.length - 8)}\n'
+              'Verified: ${foundToken.verified ? 'Yes' : 'No'}', // Translated
         );
 
-        // Fiyat teklifi al
+        // Get quote
         if (_fromAmountController.text.isNotEmpty && _fromAmountController.text != '0') {
           await Future.delayed(const Duration(milliseconds: 500));
           _getQuote();
         }
       } else {
-        throw Exception('Token bulunamadı veya geçersiz adres');
+        throw Exception('Token not found or invalid address'); // Translated
       }
 
     } catch (e) {
-      debugPrint('❌ Token ekleme hatası: $e');
+      debugPrint('❌ Token addition error: $e'); // Translated
       if (mounted) {
         _showErrorDialog(
-          'Token Eklenemedi',
-          'Token eklenirken bir hata oluştu:\n${e.toString()}\n\n'
-              'Lütfen token adresini kontrol edin ve tekrar deneyin.',
+          'Could Not Add Token', // Translated
+          'An error occurred while adding the token:\n${e.toString()}\n\n' // Translated
+              'Please check the token address and try again.', // Translated
         );
       }
     } finally {
@@ -725,7 +726,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     }
   }
 
-  // GELİŞTİRİLMİŞ QUOTE ALMA FONKSİYONU
+  // ENHANCED GET QUOTE FUNCTION
   Future<void> _getQuote() async {
     if (_isLoadingQuote || !mounted || _toToken == null) return;
 
@@ -736,17 +737,17 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       final fromToken = _predefinedTokens[_fromToken]!;
       final amountInSmallestUnit = (fromAmount * pow(10, fromToken.decimals)).toInt();
 
-      debugPrint('🔍 Quote alınıyor...');
+      debugPrint('🔍 Getting quote...'); // Translated
       debugPrint('From: ${fromToken.symbol} (${fromToken.address})');
       debugPrint('To: ${_toToken!.symbol} (${_toToken!.address})');
       debugPrint('Amount: $amountInSmallestUnit');
 
       Map<String, dynamic>? quoteData;
 
-      // Jupiter Quote API ile fiyat teklifi al
+      // Get price quote from Jupiter Quote API
       for (int attempt = 1; attempt <= 3; attempt++) {
         try {
-          debugPrint('🔍 Jupiter quote API denemesi: $attempt/3');
+          debugPrint('🔍 Jupiter quote API attempt: $attempt/3'); // Translated
 
           final uri = Uri.parse('https://quote-api.jup.ag/v6/quote').replace(
             queryParameters: {
@@ -754,7 +755,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
               'outputMint': _toToken!.address,
               'amount': amountInSmallestUnit.toString(),
               'slippageBps': '50',
-              'onlyDirectRoutes': 'false', // Tüm rotaları dene
+              'onlyDirectRoutes': 'false', // Try all routes
               'swapMode': 'ExactIn',
               'maxAccounts': '20',
             },
@@ -780,21 +781,21 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
             quoteData = json.decode(responseBody);
 
             if (quoteData!['error'] != null) {
-              throw Exception('Jupiter API Hatası: ${quoteData['error']}');
+              throw Exception('Jupiter API Error: ${quoteData['error']}'); // Translated
             }
 
             if (quoteData['outAmount'] != null) {
-              debugPrint('✅ Quote başarıyla alındı');
+              debugPrint('✅ Quote successfully received'); // Translated
               break;
             } else {
-              throw Exception('Quote response\'da outAmount bulunamadı');
+              throw Exception('outAmount not found in Quote response'); // Translated
             }
           } else if (quoteResponse.statusCode == 400) {
             final errorBody = quoteResponse.body;
             debugPrint('❌ Bad Request: $errorBody');
-            throw Exception('Geçersiz token çifti veya miktar');
+            throw Exception('Invalid token pair or amount'); // Translated
           } else if (quoteResponse.statusCode == 429) {
-            // Rate limit - bekle ve tekrar dene
+            // Rate limit - wait and try again
             if (attempt < 3) {
               await Future.delayed(Duration(seconds: attempt * 3));
               continue;
@@ -807,7 +808,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
             }
           }
         } catch (e) {
-          debugPrint('❌ Jupiter quote denemesi $attempt başarısız: $e');
+          debugPrint('❌ Jupiter quote attempt $attempt failed: $e'); // Translated
           if (attempt == 3) {
             rethrow;
           }
@@ -816,7 +817,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       }
 
       if (quoteData == null) {
-        throw Exception('Fiyat teklifi alınamadı - tüm denemeler başarısız');
+        throw Exception('Price quote could not be retrieved - all attempts failed'); // Translated
       }
 
       if (quoteData['outAmount'] != null && mounted) {
@@ -827,30 +828,30 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
           _toAmountController.text = outputAmount.toStringAsFixed(8);
           _exchangeRate = outputAmount / fromAmount;
           _priceImpact = double.tryParse(quoteData!['priceImpactPct']?.toString() ?? '0') ?? 0.0;
-          _minimumReceived = outputAmount * 0.995; // %0.5 slippage
+          _minimumReceived = outputAmount * 0.995; // 0.5% slippage
           _networkFee = 0.000005;
         });
 
-        debugPrint('✅ Quote başarıyla işlendi');
+        debugPrint('✅ Quote successfully processed'); // Translated
         debugPrint('📈 Exchange Rate: $_exchangeRate');
         debugPrint('💥 Price Impact: $_priceImpact%');
         debugPrint('📤 Output Amount: $outputAmount');
       } else {
-        throw Exception('Geçersiz quote response');
+        throw Exception('Invalid quote response'); // Translated
       }
     } catch (e) {
       debugPrint('❌ Quote fetch error: $e');
       if (mounted) {
-        String errorMessage = 'Fiyat bilgisi alınırken hata oluştu:\n${e.toString()}';
+        String errorMessage = 'Error while getting price information:\n${e.toString()}'; // Translated
 
-        // Daha spesifik hata mesajları
-        if (e.toString().contains('Geçersiz token çifti')) {
-          errorMessage = 'Bu token çifti için fiyat bilgisi mevcut değil. Farklı bir token deneyin.';
+        // More specific error messages
+        if (e.toString().contains('Invalid token pair')) { // Translated
+          errorMessage = 'Price information is not available for this token pair. Try a different token.'; // Translated
         } else if (e.toString().contains('timeout')) {
-          errorMessage = 'Bağlantı zaman aşımına uğradı. Lütfen tekrar deneyin.';
+          errorMessage = 'Connection timed out. Please try again.'; // Translated
         }
 
-        _showErrorDialog('Fiyat Bilgisi Alınamadı', errorMessage);
+        _showErrorDialog('Could Not Get Price Information', errorMessage); // Translated
 
         setState(() {
           _toAmountController.text = '';
@@ -869,7 +870,9 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
   Future<void> _swapTokens() async {
     if (_fromToken == 'SOL' && _toToken != null) {
-      return;
+      // This part might need more logic depending on if you allow swapping SOL to SOL or other specific cases
+      // For now, let's assume it should reverse if SOL is already chosen as 'from' and a 'to' token exists.
+      // Or you might want to prevent swapping SOL to itself directly and handle it via the executeSwap.
     } else if (_toToken != null) {
       setState(() {
         final tempToken = _toToken;
@@ -907,23 +910,23 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
   Future<void> _executeSwap() async {
     if (!mounted || _fromAmountController.text.isEmpty || _currentQuote == null) {
-      _showErrorDialog('Eksik Bilgi', 'Lütfen geçerli bir miktar girin.');
+      _showErrorDialog('Missing Information', 'Please enter a valid amount.'); // Translated
       return;
     }
 
     final fromAmount = double.tryParse(_fromAmountController.text);
     if (fromAmount == null || fromAmount <= 0) {
-      _showErrorDialog('Geçersiz Miktar', 'Lütfen geçerli bir miktar girin.');
+      _showErrorDialog('Invalid Amount', 'Please enter a valid amount.'); // Translated
       return;
     }
 
     final availableBalance = _tokenBalances[_fromToken] ?? 0.0;
     if (fromAmount > availableBalance) {
       _showErrorDialog(
-        'Yetersiz Bakiye',
-        'Girdiğiniz miktar mevcut bakiyenizden fazla.\n\n'
-            'Mevcut bakiye: ${availableBalance.toStringAsFixed(6)} $_fromToken\n'
-            'Girilen miktar: ${fromAmount.toStringAsFixed(6)} $_fromToken',
+        'Insufficient Balance'.tr(), // Translated
+        'The amount you entered exceeds your current balance.\n\n' // Translated
+            'Available balance: ${availableBalance.toStringAsFixed(6)} $_fromToken\n'
+            'Entered amount: ${fromAmount.toStringAsFixed(6)} $_fromToken', // Translated
       );
       return;
     }
@@ -934,7 +937,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     setState(() => _isLoading = true);
 
     try {
-      debugPrint('🚀 Swap işlemi başlıyor...');
+      debugPrint('🚀 Starting swap operation...'.tr()); // Translated
 
       final result = await _executeSwapTransaction();
 
@@ -942,10 +945,10 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
         _lastTransactionSignature = result['signature'];
 
         _showSuccessDialog(
-          'Swap Başarılı!',
-          'Token takası başarıyla tamamlandı.\n\n'
-              'İşlem ID: ${result['signature'].substring(0, 16)}...\n\n'
-              'Bakiyeniz birkaç saniye içinde güncellenecek.',
+          'Swap Successful!'.tr(), // Translated
+          'Token swap completed successfully.\n\n' // Translated
+              'Transaction ID: ${result['signature'].substring(0, 16)}...\n\n'
+              'Your balance will be updated in a few seconds.', // Translated
         );
 
         _fromAmountController.clear();
@@ -962,15 +965,15 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
         HapticFeedback.heavyImpact();
       } else {
-        throw Exception(result['error'] ?? 'Bilinmeyen hata oluştu');
+        throw Exception(result['error'] ?? 'Unknown error occurred'); // Translated
       }
     } catch (e) {
-      debugPrint('❌ Swap işlem hatası: $e');
+      debugPrint('❌ Swap transaction error: $e'); // Translated
       if (mounted) {
         _showErrorDialog(
-          'Swap Hatası',
-          'Token takası sırasında hata oluştu:\n${e.toString()}\n\n'
-              'Lütfen tekrar deneyin.',
+          'Swap Error', // Translated
+          'An error occurred during token swap:\n${e.toString()}\n\n' // Translated
+              'Please try again.', // Translated
         );
       }
     }
@@ -980,7 +983,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     }
   }
 
-  // Diğer methodlar aynı kalacak - transaction execution vb.
+  // Other methods remain the same - transaction execution etc.
   Future<Map<String, dynamic>> _executeSwapTransaction() async {
     try {
       Map<String, dynamic>? swapData;
@@ -1019,7 +1022,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       }
 
       if (swapData == null || swapData['swapTransaction'] == null) {
-        throw Exception('Swap transaction alınamadı');
+        throw Exception('Swap transaction could not be retrieved'); // Translated
       }
 
       final signedTransactionBase64 = await _signTransactionCorrect(swapData['swapTransaction']);
@@ -1050,7 +1053,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
       return base64.encode(signedTransactionBytes);
     } catch (e) {
-      throw Exception('İmzalama hatası: $e');
+      throw Exception('Signing error: $e'); // Translated
     }
   }
 
@@ -1097,7 +1100,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       }
 
       if (signature == null || signature.isEmpty) {
-        throw lastError ?? Exception('Tüm RPC endpoint\'leri başarısız');
+        throw lastError ?? Exception('All RPC endpoints failed'); // Translated
       }
 
       return {
@@ -1140,8 +1143,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                         child: const Icon(Icons.swap_horiz, color: Colors.orange, size: 32),
                       ),
                       const SizedBox(width: 12),
-                      const Text(
-                        'Swap Onayı',
+                      Text(
+                        'Swap Confirmation'.tr(), // Translated from 'Swap Onayı'
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -1158,8 +1161,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'İşlem Detayları',
+                        Text(
+                          'Transaction Details'.tr(), // Translated from 'İşlem Detayları'
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -1167,15 +1170,15 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildDetailRow('Gönderilecek:', '${_fromAmountController.text} $_fromToken'),
-                        _buildDetailRow('Alınacak:', '${_toAmountController.text} ${_toToken?.symbol}'),
-                        _buildDetailRow('Minimum Alınacak:', '${_minimumReceived.toStringAsFixed(6)} ${_toToken?.symbol}'),
+                        _buildDetailRow('Sending:', '${_fromAmountController.text} $_fromToken'), // Translated
+                        _buildDetailRow('Receiving:', '${_toAmountController.text} ${_toToken?.symbol}'), // Translated
+                        _buildDetailRow('Minimum Received:', '${_minimumReceived.toStringAsFixed(6)} ${_toToken?.symbol}'), // Translated
                         _buildDetailRow(
-                          'Fiyat Etkisi:',
+                          'Price Impact:', // Translated
                           '${_priceImpact.toStringAsFixed(2)}%',
                           valueColor: priceImpactColor,
                         ),
-                        _buildDetailRow('Ağ Ücreti:', '~${_networkFee.toStringAsFixed(6)} SOL'),
+                        _buildDetailRow('Network Fee:', '~${_networkFee.toStringAsFixed(6)} SOL'), // Translated
                       ],
                     ),
                   ),
@@ -1191,9 +1194,9 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                       children: [
                         const Icon(Icons.warning_amber, color: Colors.orange, size: 20),
                         const SizedBox(width: 8),
-                        const Expanded(
+                        Expanded(
                           child: Text(
-                            'Bu işlem geri alınamaz. Devam etmek istediğinizden emin misiniz?',
+                            'This transaction is irreversible. Are you sure you want to proceed?'.tr(), // Translated from 'Bu işlem geri alınamaz. Devam etmek istediğinizden emin misiniz?'
                             style: TextStyle(
                               color: Colors.orange,
                               fontSize: 12,
@@ -1212,7 +1215,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.white70,
                           ),
-                          child: const Text('İptal Et'),
+                          child:  Text('Cancel'.tr()), // Translated from 'İptal Et'
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -1226,7 +1229,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text('Swap Yap'),
+                          child:  Text('Swap'.tr()), // Translated from 'Swap Yap'
                         ),
                       ),
                     ],
@@ -1291,8 +1294,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                 child: const Icon(Icons.add_circle, color: Colors.orange, size: 28),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Token Ekle',
+               Text(
+                'Add Token'.tr(), // Translated from 'Token Ekle'
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -1311,8 +1314,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Popüler Tokenlar',
+                 Text(
+                  'Popular Tokens'.tr(), // Translated from 'Popüler Tokenlar'
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -1371,8 +1374,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Özel Token Ekle',
+                Text(
+                  'Add Custom Token'.tr(), // Translated from 'Özel Token Ekle'
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -1384,9 +1387,9 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                   controller: _contractAddressController,
                   style: const TextStyle(color: Colors.white),
                   decoration: InputDecoration(
-                    labelText: 'Token Contract Adresi',
+                    labelText: 'Token Contract Address'.tr(), // Translated from 'Token Contract Adresi'
                     labelStyle: const TextStyle(color: Colors.white70),
-                    hintText: 'Örn: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+                    hintText: 'Ex: EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // Translated
                     hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -1424,7 +1427,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text('İptal'),
+                  child:  Text('Cancel'.tr()), // Translated from 'İptal'
                 ),
               ),
               const SizedBox(width: 12),
@@ -1456,7 +1459,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                         strokeWidth: 2,
                       ),
                     )
-                        : const Text('Token Ekle'),
+                        :  Text('Add Token'.tr()), // Translated from 'Token Ekle'
                   ),
                 ),
               ),
@@ -1474,16 +1477,15 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       extendBodyBehindAppBar: true,
       body: Container(
         decoration: BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment.topCenter,
-            radius: 2.0,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Colors.orange.withOpacity(0.3),
-              Colors.deepOrange.withOpacity(0.2),
-              const Color(0xFF0A0A0A),
-              Colors.black,
+              const Color(0xFF000000),
+              const Color(0xFF1A1A1A),
+              const Color(0xFF2D1810),
+              const Color(0xFF1A1A1A),
             ],
-            stops: const [0.0, 0.3, 0.7, 1.0],
           ),
         ),
         child: Stack(
@@ -1523,8 +1525,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    const Text(
-                      'Token Swap',
+                    Text(
+                      'Token Swap'.tr(), // Translated from 'Token Swap'
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 20,
@@ -1572,8 +1574,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Gönderilecek',
+                              Text(
+                                'You send'.tr(), // Translated from 'Gönderilecek'
                                 style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 16,
@@ -1603,8 +1605,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                                       ),
                                     ],
                                   ),
-                                  child: const Text(
-                                    'MAX',
+                                  child: Text(
+                                    'MAX'.tr(),
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 12,
@@ -1625,7 +1627,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                'Bakiye: ${(_tokenBalances[_fromToken] ?? 0.0).toStringAsFixed(6)} SOL',
+                                'Balance: ${(_tokenBalances[_fromToken] ?? 0.0).toStringAsFixed(6)} SOL', // Translated
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 14,
@@ -1745,8 +1747,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Alınacak (tahmini)',
+                              Text(
+                                'You receive (estimated)'.tr(), // Translated from 'Alınacak (tahmini)'
                                 style: TextStyle(
                                   color: Colors.white70,
                                   fontSize: 16,
@@ -1811,8 +1813,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                                     ? Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      'Token Seçin',
+                                     Text(
+                                      'Select Token'.tr(), // Translated from 'Token Seçin'
                                       style: TextStyle(
                                         color: Colors.white70,
                                         fontSize: 18,
@@ -1821,7 +1823,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      'Yukarıdaki + butonuna tıklayın',
+                                      'Click the + button above'.tr(), // Translated from 'Yukarıdaki + butonuna tıklayın'
                                       style: TextStyle(
                                         color: Colors.white.withOpacity(0.5),
                                         fontSize: 14,
@@ -1910,8 +1912,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  const Text(
-                                    'Fiyat hesaplanıyor...',
+                                  Text(
+                                    'Calculating price...'.tr(), // Translated from 'Fiyat hesaplanıyor...'
                                     style: TextStyle(
                                       color: Colors.white70,
                                       fontSize: 12,
@@ -1937,8 +1939,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                               children: [
                                 Icon(Icons.info_outline, color: Colors.blue, size: 20),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  'İşlem Detayları',
+                                Text(
+                                  'Transaction Details'.tr(), // Translated from 'İşlem Detayları'
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w600,
@@ -1948,15 +1950,15 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            _buildDetailRow('Döviz Kuru:', '1 $_fromToken = ${_exchangeRate.toStringAsFixed(8)} ${_toToken!.symbol}'),
+                            _buildDetailRow('Exchange Rate:', '1 $_fromToken = ${_exchangeRate.toStringAsFixed(8)} ${_toToken!.symbol}'), // Translated
                             _buildDetailRow(
-                              'Fiyat Etkisi:',
+                              'Price Impact:', // Translated
                               '${_priceImpact.toStringAsFixed(2)}%',
                               valueColor: _priceImpact > 5.0 ? Colors.red :
                               _priceImpact > 2.0 ? Colors.orange : Colors.green,
                             ),
-                            _buildDetailRow('Minimum Alınacak:', '${_minimumReceived.toStringAsFixed(8)} ${_toToken!.symbol}'),
-                            _buildDetailRow('Tahmini Ağ Ücreti:', '~${_networkFee.toStringAsFixed(6)} SOL'),
+                            _buildDetailRow('Minimum Received:', '${_minimumReceived.toStringAsFixed(8)} ${_toToken!.symbol}'), // Translated
+                            _buildDetailRow('Estimated Network Fee:', '~${_networkFee.toStringAsFixed(6)} SOL'), // Translated
                           ],
                         ),
                       ),
@@ -2015,8 +2017,8 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                             ),
                           )
                               : Text(
-                            _canSwap() ? 'SWAP YAP' :
-                            _toToken == null ? 'TOKEN SEÇİN' : 'MİKTAR GİRİN',
+                            _canSwap() ? 'SWAP'.tr() : // Translated from 'SWAP YAP'
+                            _toToken == null ? 'SELECT TOKEN'.tr() : 'ENTER AMOUNT'.tr(), // Translated from 'TOKEN SEÇİN' / 'MİKTAR GİRİN'
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -2048,12 +2050,12 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                             ),
                           ),
                           const SizedBox(width: 16),
-                          const Expanded(
+                          Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Güvenlik Bildirimi',
+                                  'Security Notice'.tr(), // Translated from 'Güvenlik Bildirimi'
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 16,
@@ -2062,7 +2064,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                                 ),
                                 SizedBox(height: 6),
                                 Text(
-                                  'Bu swap Solana mainnet üzerinde Jupiter aggregator kullanılarak gerçekleştirilecek. Token contract adreslerini her zaman doğrulayın ve fiyat etkisine dikkat edin. İşlemler geri alınamaz.',
+                                  'This swap will be performed on the Solana mainnet using the Jupiter aggregator. Always verify token contract addresses and be aware of price impact. Transactions are irreversible.'.tr(), // Translated
                                   style: TextStyle(
                                     color: Colors.white70,
                                     fontSize: 13,

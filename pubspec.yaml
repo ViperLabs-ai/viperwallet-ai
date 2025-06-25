@@ -33,10 +33,11 @@ dependencies:
   # Crypto & Blockchain
   solana: ^0.31.2+1
   crypto: ^3.0.3
-  bs58: ^1.0.2
+  bs58: ^1.0.0
   bip39: ^1.0.6
   ed25519_hd_key: ^2.2.0
   easy_localization: ^3.0.3
+  easy_localization_loader: ^2.0.1
 
   # UI & Charts
   fl_chart: ^0.66.0
@@ -47,6 +48,8 @@ dependencies:
   lottie: ^2.7.0
   shimmer: ^3.0.0
   flutter_staggered_animations: ^1.1.1
+  convert: ^3.0.1 # For hex encoding/decoding (Uint8List to String)
+  pointycastle: ^3.7.3 # For AES encryption
 
   # Utils
   url_launcher: ^6.2.2

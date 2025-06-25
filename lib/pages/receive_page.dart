@@ -26,7 +26,7 @@ class _ReceivePageState extends State<ReceivePage> {
   }
 
   void _updateQRCode() {
-    // Solana Payment Request URI formatı: solana:<address>?amount=<amount>&spl-token=<mint>&memo=<memo>
+    // Solana Payment Request URI format: solana:<address>?amount=<amount>&spl-token=<mint>&memo=<memo>
     String qrData = 'solana:${widget.wallet.address}';
 
     List<String> params = [];
@@ -59,10 +59,10 @@ class _ReceivePageState extends State<ReceivePage> {
 
   bool _isValidSolanaAddress(String address) {
     try {
-      // Solana adresleri 32-44 karakter arası base58 encoded olmalı
+      // Solana addresses should be 32-44 characters base58 encoded
       if (address.length < 32 || address.length > 44) return false;
 
-      // Base58 karakterleri kontrol et
+      // Check for Base58 characters
       final base58Regex = RegExp(r'^[1-9A-HJ-NP-Za-km-z]+$');
       return base58Regex.hasMatch(address);
     } catch (e) {
@@ -71,11 +71,11 @@ class _ReceivePageState extends State<ReceivePage> {
   }
 
   void _copyAddress() {
-    // Adres doğrulaması
+    // Address validation
     if (!_isValidSolanaAddress(widget.wallet.address)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Geçersiz cüzdan adresi!'),
+          content: Text('Invalid wallet address!'),
           backgroundColor: Colors.red,
         ),
       );
@@ -84,7 +84,7 @@ class _ReceivePageState extends State<ReceivePage> {
 
     Clipboard.setData(ClipboardData(text: widget.wallet.address));
 
-    // Haptic feedback ekle
+    // Add haptic feedback
     HapticFeedback.mediumImpact();
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -93,17 +93,17 @@ class _ReceivePageState extends State<ReceivePage> {
           children: [
             const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
-            const Text('Adres güvenli şekilde kopyalandı!'),
+            const Text('Address securely copied!'),
           ],
         ),
         backgroundColor: const Color(0xFFFF6B35),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         action: SnackBarAction(
-          label: 'Explorer\'da Gör',
+          label: 'View on Explorer',
           textColor: Colors.white,
           onPressed: () {
-            // Solana Explorer'da adresi aç
+            // Open address on Solana Explorer
             print('Open: https://explorer.solana.com/address/${widget.wallet.address}');
           },
         ),
@@ -113,18 +113,18 @@ class _ReceivePageState extends State<ReceivePage> {
 
   void _shareQRCode() async {
     try {
-      final shareText = 'Solana cüzdan adresim: ${widget.wallet.address}\n\n'
-          'QR kod ile ödeme: $_qrData\n\n'
-          'Viper Wallet ile güvenli işlem yapın!';
+      final shareText = 'My Solana wallet address: ${widget.wallet.address}\n\n'
+          'Pay with QR code: $_qrData\n\n'
+          'Transact securely with Viper Wallet!';
 
-      // Share package kullanılabilir: await Share.share(shareText);
-      // Şimdilik clipboard'a kopyala
+      // Can use share package: await Share.share(shareText);
+      // For now, copy to clipboard
       await Clipboard.setData(ClipboardData(text: shareText));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Paylaşım bilgileri kopyalandı!'),
+            content: Text('Share information copied!'.tr()),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -135,7 +135,7 @@ class _ReceivePageState extends State<ReceivePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Paylaşım hatası: ${e.toString()}'),
+            content: Text('Share error: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -173,19 +173,19 @@ class _ReceivePageState extends State<ReceivePage> {
     try {
       final amount = double.parse(value);
       if (amount <= 0) {
-        return 'Miktar 0\'dan büyük olmalı';
+        return 'Amount must be greater than 0';
       }
       if (amount > 1000000) {
-        return 'Miktar çok büyük';
+        return 'Amount is too large';
       }
       // 9 decimal places check for SOL
       final parts = value.split('.');
       if (parts.length > 1 && parts[1].length > 9) {
-        return 'En fazla 9 ondalık basamak';
+        return 'Max 9 decimal places';
       }
       return null;
     } catch (e) {
-      return 'Geçersiz miktar';
+      return 'Invalid amount';
     }
   }
 
@@ -196,8 +196,8 @@ class _ReceivePageState extends State<ReceivePage> {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text(
-          'SOL Al',
+        title: Text(
+          'Receive SOL'.tr(),
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
@@ -238,14 +238,14 @@ class _ReceivePageState extends State<ReceivePage> {
               children: [
                 const SizedBox(height: 20),
 
-                // QR Kod kartı
+                // QR Code card
                 _buildGlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
                       children: [
                         Text(
-                          'QR Kodu Taratın',
+                          'Scan QR Code'.tr(),
                           style: TextStyle(
                             color: isDark ? Colors.white : Colors.black87,
                             fontSize: 20,
@@ -280,7 +280,7 @@ class _ReceivePageState extends State<ReceivePage> {
                         const SizedBox(height: 20),
 
                         Text(
-                          'Veya cüzdan adresini paylaşın',
+                          'Or share your wallet address'.tr(),
                           style: TextStyle(
                             color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                             fontSize: 14,
@@ -293,7 +293,7 @@ class _ReceivePageState extends State<ReceivePage> {
 
                 const SizedBox(height: 24),
 
-                // Adres kartı
+                // Address card
                 _buildGlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -301,7 +301,7 @@ class _ReceivePageState extends State<ReceivePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Cüzdan Adresi',
+                          'Wallet Address'.tr(),
                           style: TextStyle(
                             color: isDark ? Colors.white : Colors.black87,
                             fontSize: 16,
@@ -347,7 +347,7 @@ class _ReceivePageState extends State<ReceivePage> {
 
                 const SizedBox(height: 24),
 
-                // Özelleştirme kartı
+                // Customization card
                 _buildGlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -355,7 +355,7 @@ class _ReceivePageState extends State<ReceivePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'QR Kodu Özelleştir',
+                          'Customize QR Code'.tr(),
                           style: TextStyle(
                             color: isDark ? Colors.white : Colors.black87,
                             fontSize: 16,
@@ -371,7 +371,7 @@ class _ReceivePageState extends State<ReceivePage> {
                             color: isDark ? Colors.white : Colors.black87,
                           ),
                           decoration: InputDecoration(
-                            labelText: 'Miktar (SOL)',
+                            labelText: 'Amount (SOL)'.tr(),
                             labelStyle: TextStyle(
                               color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                             ),
@@ -412,7 +412,7 @@ class _ReceivePageState extends State<ReceivePage> {
                           ),
                           onChanged: (value) {
                             _updateQRCode();
-                            setState(() {}); // Validation mesajını güncellemek için
+                            setState(() {}); // Update validation message
                           },
                         ),
 
@@ -420,16 +420,16 @@ class _ReceivePageState extends State<ReceivePage> {
 
                         TextField(
                           controller: _memoController,
-                          maxLength: 32, // Solana memo limiti
+                          maxLength: 32, // Solana memo limit
                           style: TextStyle(
                             color: isDark ? Colors.white : Colors.black87,
                           ),
                           decoration: InputDecoration(
-                            labelText: 'Memo (Opsiyonel)',
+                            labelText: 'Memo (Optional)'.tr(),
                             labelStyle: TextStyle(
                               color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                             ),
-                            hintText: 'İşlem notu (max 32 karakter)',
+                            hintText: 'Transaction note (max 32 chars)'.tr(),
                             hintStyle: TextStyle(
                               color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
                             ),
@@ -463,7 +463,7 @@ class _ReceivePageState extends State<ReceivePage> {
 
                 const SizedBox(height: 24),
 
-                // Bilgi kartı
+                // Info card
                 _buildGlassCard(
                   child: Padding(
                     padding: const EdgeInsets.all(20),
@@ -476,7 +476,7 @@ class _ReceivePageState extends State<ReceivePage> {
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Güvenlik Uyarısı',
+                          'Security Warning'.tr(),
                           style: TextStyle(
                             color: isDark ? Colors.white : Colors.black87,
                             fontSize: 16,
@@ -485,9 +485,9 @@ class _ReceivePageState extends State<ReceivePage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'QR kodunuzu ve cüzdan adresinizi yalnızca güvendiğiniz kişilerle paylaşın. '
-                              'Bu bilgiler size SOL göndermek için kullanılır. '
-                              'Sahte QR kodlara dikkat edin ve işlemleri her zaman doğrulayın.',
+                          'Share your QR code and wallet address only with people you trust. '
+                              'This information is used to send SOL to you. '
+                              'Beware of fake QR codes and always verify transactions.'.tr(),
                           style: TextStyle(
                             color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                             fontSize: 14,

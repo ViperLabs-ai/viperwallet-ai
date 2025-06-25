@@ -8,6 +8,7 @@ import 'package:solana/solana.dart';
 import 'package:http/http.dart' as http;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:viperwallet/pages/nft_page.dart';
+import 'package:viperwallet/pages/settings_page.dart';
 import 'charts_page.dart';
 import 'send_page.dart' hide lamportsPerSol;
 import 'swap_page.dart' hide lamportsPerSol;
@@ -15,6 +16,7 @@ import 'receive_page.dart';
 import 'swap_page.dart';
 import 'transaction_history_page.dart';
 import '../services/rpc_service.dart';
+import 'package:easy_localization/easy_localization.dart'; // Added easy_localization import
 
 class DashboardPage extends StatefulWidget {
   final Ed25519HDKeyPair wallet;
@@ -132,7 +134,7 @@ class _DashboardPageState extends State<DashboardPage>
 
     setState(() {
       _isLoading = true;
-      _networkStatus = 'Connecting...';
+      _networkStatus = 'Connecting...'.tr(); // Localized
       _retryCount = 0;
     });
 
@@ -157,7 +159,7 @@ class _DashboardPageState extends State<DashboardPage>
 
       setState(() {
         _isNetworkConnected = true;
-        _networkStatus = 'Connected';
+        _networkStatus = 'Connected'.tr(); // Localized
       });
 
     } catch (e) {
@@ -165,7 +167,7 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _isNetworkConnected = false;
-          _networkStatus = 'Connection Error';
+          _networkStatus = 'Connection Error'.tr(); // Localized
           _retryCount++;
         });
       }
@@ -188,7 +190,7 @@ class _DashboardPageState extends State<DashboardPage>
 
     try {
       setState(() {
-        _networkStatus = 'Loading SOL balance...';
+        _networkStatus = 'Loading SOL balance...'.tr(); // Localized
       });
 
       print('🔍 Loading balance for wallet: ${widget.wallet.address}');
@@ -211,7 +213,7 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _solBalance = balanceInSol;
-          _networkStatus = 'SOL balance: ${balanceInSol.toStringAsFixed(6)}';
+          _networkStatus = 'SOL balance: ${balanceInSol.toStringAsFixed(6)}'.tr(); // Localized
         });
       }
 
@@ -220,7 +222,7 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _solBalance = 0.0;
-          _networkStatus = 'Balance loading failed: ${e.toString()}';
+          _networkStatus = 'Balance loading failed: ${e.toString()}'.tr(); // Localized
         });
       }
       rethrow;
@@ -232,7 +234,7 @@ class _DashboardPageState extends State<DashboardPage>
 
     setState(() {
       _isLoadingTokens = true;
-      _networkStatus = 'Loading token balances...';
+      _networkStatus = 'Loading token balances...'.tr(); // Localized
     });
 
     try {
@@ -278,7 +280,7 @@ class _DashboardPageState extends State<DashboardPage>
                       'mint': mint,
                       'balance': uiAmount,
                       'decimals': decimals,
-                      'name': tokenInfo['name'] ?? 'Unknown Token',
+                      'name': tokenInfo['name'] ?? 'Unknown Token'.tr(), // Localized
                       'symbol': tokenInfo['symbol'] ?? mint.substring(0, 6),
                       'logoURI': tokenInfo['logoURI'],
                       'verified': tokenInfo['verified'] ?? false,
@@ -300,7 +302,7 @@ class _DashboardPageState extends State<DashboardPage>
         setState(() {
           _tokenBalances = tokens;
           _isLoadingTokens = false;
-          _networkStatus = 'Loaded ${tokens.length} tokens';
+          _networkStatus = 'Loaded ${tokens.length} tokens'.tr(); // Localized
         });
       }
 
@@ -310,7 +312,7 @@ class _DashboardPageState extends State<DashboardPage>
         setState(() {
           _tokenBalances = [];
           _isLoadingTokens = false;
-          _networkStatus = 'Token loading failed';
+          _networkStatus = 'Token loading failed'.tr(); // Localized
         });
       }
     }
@@ -342,7 +344,7 @@ class _DashboardPageState extends State<DashboardPage>
 
     // Fallback
     return {
-      'name': 'Token ${mint.substring(0, 6)}...${mint.substring(mint.length - 4)}',
+      'name': 'Token ${mint.substring(0, 6)}...${mint.substring(mint.length - 4)}'.tr(), // Localized
       'symbol': mint.substring(0, 6).toUpperCase(),
       'logoURI': null,
       'verified': false,
@@ -354,7 +356,7 @@ class _DashboardPageState extends State<DashboardPage>
 
     try {
       setState(() {
-        _networkStatus = 'Loading SOL price...';
+        _networkStatus = 'Loading SOL price...'.tr(); // Localized
       });
 
       // CoinGecko API
@@ -386,7 +388,7 @@ class _DashboardPageState extends State<DashboardPage>
           _monthlyChange = (solData['usd_30d_change'] as num?)?.toDouble() ?? 0.0;
           _dailyVolume = (solData['usd_24h_vol'] as num?)?.toDouble() ?? 0.0;
           _marketCap = (solData['usd_market_cap'] as num?)?.toDouble() ?? 0.0;
-          _networkStatus = 'SOL price: \$${_solPrice.toStringAsFixed(2)}';
+          _networkStatus = 'SOL price: \$${_solPrice.toStringAsFixed(2)}'.tr(); // Localized
         });
 
         print('💲 SOL Price loaded: \$${_solPrice.toStringAsFixed(2)}');
@@ -399,7 +401,7 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _solPrice = 0.0;
-          _networkStatus = 'Price loading failed';
+          _networkStatus = 'Price loading failed'.tr(); // Localized
         });
       }
     }
@@ -410,7 +412,7 @@ class _DashboardPageState extends State<DashboardPage>
 
     setState(() {
       _isLoadingTransactions = true;
-      _networkStatus = 'Loading transactions...';
+      _networkStatus = 'Loading transactions...'.tr(); // Localized
     });
 
     try {
@@ -479,7 +481,7 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _recentTransactions = transactions;
-          _networkStatus = 'Loaded ${transactions.length} transactions';
+          _networkStatus = 'Loaded ${transactions.length} transactions'.tr(); // Localized
           _isLoadingTransactions = false;
         });
       }
@@ -491,7 +493,7 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _recentTransactions = [];
-          _networkStatus = 'Transaction loading failed';
+          _networkStatus = 'Transaction loading failed'.tr(); // Localized
           _isLoadingTransactions = false;
         });
       }
@@ -515,7 +517,7 @@ class _DashboardPageState extends State<DashboardPage>
           children: [
             const Icon(Icons.check_circle, color: Colors.white),
             const SizedBox(width: 8),
-            const Text('Address copied to clipboard'),
+            Text('Address copied to clipboard'.tr()), // Localized
           ],
         ),
         backgroundColor: const Color(0xFFFF6B35),
@@ -546,19 +548,19 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   String _formatDate(int? blockTime) {
-    if (blockTime == null) return 'Unknown';
+    if (blockTime == null) return 'Unknown'.tr(); // Localized
     final date = DateTime.fromMillisecondsSinceEpoch(blockTime * 1000);
     final now = DateTime.now();
     final difference = now.difference(date);
 
     if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
+      return '${difference.inDays}d ago'.tr(); // Localized
     } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
+      return '${difference.inHours}h ago'.tr(); // Localized
     } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
+      return '${difference.inMinutes}m ago'.tr(); // Localized
     } else {
-      return 'Just now';
+      return 'Just now'.tr(); // Localized
     }
   }
 
@@ -608,7 +610,7 @@ class _DashboardPageState extends State<DashboardPage>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Token Bakiyeleri',
+          'Token Bakiyeleri'.tr(), // Localized
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black87,
             fontSize: 20,
@@ -636,7 +638,7 @@ class _DashboardPageState extends State<DashboardPage>
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      'Henüz token bulunamadı',
+                      'Henüz token bulunamadı'.tr(), // Localized
                       style: TextStyle(
                         color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                         fontSize: 16,
@@ -645,7 +647,7 @@ class _DashboardPageState extends State<DashboardPage>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Cüzdanınızda token bakiyesi bulunmuyor',
+                      'Cüzdanınızda token bakiyesi bulunmuyor'.tr(), // Localized
                       style: TextStyle(
                         color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
                         fontSize: 12,
@@ -804,9 +806,9 @@ class _DashboardPageState extends State<DashboardPage>
               shaderCallback: (bounds) => const LinearGradient(
                 colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
               ).createShader(bounds),
-              child: const Text(
-                'Viper Wallet',
-                style: TextStyle(
+              child: Text(
+                'Viper Wallet'.tr(), // Localized
+                style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 22,
@@ -838,7 +840,7 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  _isNetworkConnected ? 'Online' : 'Offline',
+                  _isNetworkConnected ? 'Online'.tr() : 'Offline'.tr(), // Localized
                   style: TextStyle(
                     color: _isNetworkConnected ? Colors.green : Colors.orange,
                     fontSize: 10,
@@ -846,6 +848,22 @@ class _DashboardPageState extends State<DashboardPage>
                   ),
                 ),
               ],
+            ),
+          ),
+          Container(
+            margin: const EdgeInsets.only(right: 5),
+            decoration: BoxDecoration(
+              color: (isDark ? Colors.black : Colors.white).withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFFFF6B35).withOpacity(0.3),
+              ),
+            ),
+            child: IconButton(
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const SettingsPage()));
+                },
+                icon: Icon(Icons.settings, color: Color(0xFFFF6B35),)
             ),
           ),
           Container(
@@ -900,32 +918,29 @@ class _DashboardPageState extends State<DashboardPage>
             children: [
               ScaleTransition(
                 scale: _scaleAnimation,
-                child: RotationTransition(
-                  turns: _rotationAnimation,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0x00FF6B35),
-                          Color(0x00FF8C42),
-                          Color(0x00FFB347),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFFF6B35).withOpacity(0.3),
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0x00FF6B35),
+                        Color(0x00FF8C42),
+                        Color(0x00FFB347),
                       ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                    child: Image.asset('assets/icon/icon1.png'),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF6B35).withOpacity(0.3),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
+                    ],
                   ),
+                  child: Image.asset('assets/icon/icon1.png'),
                 ),
               ),
 
@@ -934,7 +949,7 @@ class _DashboardPageState extends State<DashboardPage>
               ScaleTransition(
                 scale: _pulseAnimation,
                 child: Text(
-                  'Loading Wallet...',
+                  'Loading Wallet...'.tr(), // Localized
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black87,
                     fontSize: 24,
@@ -996,16 +1011,15 @@ class _DashboardPageState extends State<DashboardPage>
                     //const SizedBox(height: 28),
 
                     // Market data
-                    if (_isNetworkConnected && _solPrice > 0) ...[
-                      _buildMarketDataSection(isDark),
-                      const SizedBox(height: 28),
-                    ],
+
+                    _buildMarketDataSection(isDark),
+                    const SizedBox(height: 28),
+
 
                     // Price changes
-                    if (_isNetworkConnected && _solPrice > 0) ...[
-                      _buildPriceChangesSection(isDark),
-                      const SizedBox(height: 28),
-                    ],
+
+                    _buildPriceChangesSection(isDark),
+                    const SizedBox(height: 28),
 
                     // Recent transactions
                     if (_recentTransactions.isNotEmpty) ...[
@@ -1060,7 +1074,7 @@ class _DashboardPageState extends State<DashboardPage>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        'SOL Balance',
+                        'SOL Balance'.tr(), // Localized
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.9),
                           fontSize: 11,
@@ -1130,7 +1144,7 @@ class _DashboardPageState extends State<DashboardPage>
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            '(24h)',
+                            '(24h)'.tr(), // Localized
                             style: TextStyle(
                               color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.8),
                               fontSize: 12,
@@ -1145,7 +1159,7 @@ class _DashboardPageState extends State<DashboardPage>
               ],
             ] else ...[
               Text(
-                'Price data loading...',
+                'Price data loading...'.tr(), // Localized
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.7),
                   fontSize: 16,
@@ -1169,7 +1183,7 @@ class _DashboardPageState extends State<DashboardPage>
       children: [
         _buildActionButton(
           icon: FontAwesomeIcons.paperPlane,
-          label: 'Send',
+          label: 'Send'.tr(), // Localized
           onTap: () {
             HapticFeedback.lightImpact();
             Navigator.push(
@@ -1182,7 +1196,7 @@ class _DashboardPageState extends State<DashboardPage>
         ),
         _buildActionButton(
           icon: FontAwesomeIcons.qrcode,
-          label: 'Receive',
+          label: 'Receive'.tr(), // Localized
           onTap: () {
             HapticFeedback.lightImpact();
             Navigator.push(
@@ -1196,7 +1210,7 @@ class _DashboardPageState extends State<DashboardPage>
         ),
         _buildActionButton(
           icon: FontAwesomeIcons.rightLeft,
-          label: 'Swap',
+          label: 'Swap'.tr(), // Localized
           onTap: () {
             HapticFeedback.lightImpact();
             Navigator.push(
@@ -1208,9 +1222,9 @@ class _DashboardPageState extends State<DashboardPage>
           },
           color: Colors.purple,
         ),
-        _buildActionButton(
+        /*_buildActionButton(
           icon: FontAwesomeIcons.images,
-          label: 'NFT',
+          label: 'NFT'.tr(), // Localized
           onTap: () {
             HapticFeedback.lightImpact();
             Navigator.push(
@@ -1222,20 +1236,8 @@ class _DashboardPageState extends State<DashboardPage>
           },
           color: Colors.blue,
         ),
-        _buildActionButton(
-          icon: FontAwesomeIcons.chartLine,
-          label: 'Charts',
-          onTap: () {
-            HapticFeedback.lightImpact();
-            // Navigator.push(
-            //   context,
-            //   MaterialPageRoute(
-            //     builder: (context) => ChartsPage(),
-            //   ),
-            // );
-          },
-          color: Colors.amber,
-        ),
+
+         */
       ],
     );
   }
@@ -1289,7 +1291,7 @@ class _DashboardPageState extends State<DashboardPage>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Market Data',
+          'Market Data'.tr(), // Localized
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black87,
             fontSize: 20,
@@ -1306,14 +1308,14 @@ class _DashboardPageState extends State<DashboardPage>
           childAspectRatio: 1.2,
           children: [
             _buildStatCard(
-              title: 'SOL Price',
+              title: 'SOL Price'.tr(), // Localized
               value: '\$${_solPrice.toStringAsFixed(2)}',
               icon: FontAwesomeIcons.dollarSign,
               color: const Color(0xFFFF6B35),
               changeValue: _dailyChange,
             ),
             _buildStatCard(
-              title: 'Market Cap',
+              title: 'Market Cap'.tr(), // Localized
               value: _formatCurrency(_marketCap),
               icon: FontAwesomeIcons.buildingColumns,
               color: Colors.green,
@@ -1329,7 +1331,7 @@ class _DashboardPageState extends State<DashboardPage>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Price Changes',
+          'Price Changes'.tr(), // Localized
           style: TextStyle(
             color: isDark ? Colors.white : Colors.black87,
             fontSize: 20,
@@ -1346,19 +1348,19 @@ class _DashboardPageState extends State<DashboardPage>
           childAspectRatio: 0.8,
           children: [
             _buildPriceChangeCard(
-              period: '24 Hours',
+              period: '24 Hours'.tr(), // Localized
               percentage: _dailyChange,
               walletChange: _walletDailyChange,
               icon: FontAwesomeIcons.clock,
             ),
             _buildPriceChangeCard(
-              period: '7 Days',
+              period: '7 Days'.tr(), // Localized
               percentage: _weeklyChange,
               walletChange: _walletWeeklyChange,
               icon: FontAwesomeIcons.calendarDay,
             ),
             _buildPriceChangeCard(
-              period: '30 Days',
+              period: '30 Days'.tr(), // Localized
               percentage: _monthlyChange,
               walletChange: _walletMonthlyChange,
               icon: FontAwesomeIcons.calendarDays,
@@ -1377,7 +1379,7 @@ class _DashboardPageState extends State<DashboardPage>
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Recent Transactions',
+              'Recent Transactions'.tr(), // Localized
               style: TextStyle(
                 color: isDark ? Colors.white : Colors.black87,
                 fontSize: 20,
@@ -1396,9 +1398,9 @@ class _DashboardPageState extends State<DashboardPage>
                   ),
                 );
               },
-              child: const Text(
-                'View All',
-                style: TextStyle(color: Color(0xFFFF6B35)),
+              child: Text(
+                'View All'.tr(), // Localized
+                style: const TextStyle(color: Color(0xFFFF6B35)),
               ),
             ),
           ],
@@ -1447,7 +1449,7 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'Wallet Address',
+                  'Wallet Address'.tr(), // Localized
                   style: TextStyle(
                     color: isDark ? Colors.white : Colors.black87,
                     fontSize: 16,
@@ -1726,7 +1728,7 @@ class _DashboardPageState extends State<DashboardPage>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Fee: ${(fee / lamportsPerSol).toStringAsFixed(6)} SOL',
+                          'Fee: ${(fee / lamportsPerSol).toStringAsFixed(6)} SOL'.tr(), // Localized
                           style: TextStyle(
                             color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
                             fontSize: 10,
@@ -1744,7 +1746,7 @@ class _DashboardPageState extends State<DashboardPage>
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  isSuccess ? 'Success' : 'Failed',
+                  isSuccess ? 'Success'.tr() : 'Failed'.tr(), // Localized
                   style: TextStyle(
                     color: isSuccess ? Colors.green : Colors.red,
                     fontSize: 10,

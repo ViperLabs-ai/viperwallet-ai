@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:convert';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:solana/solana.dart';
 import 'package:solana/encoder.dart';
@@ -69,11 +70,11 @@ class _FixedSendPageState extends State<FixedSendPage> {
       final txSig = await rpcClient.rpcClient.sendTransaction(signedTx.encode());
 
       setState(() {
-        _statusMessage = '✅ Gönderildi! İşlem ID: $txSig';
+        _statusMessage = '✅ Sent! Transaction ID: $txSig';
       });
     } catch (e) {
       setState(() {
-        _statusMessage = '❌ Gönderim hatası: $e';
+        _statusMessage = '❌ Send error: $e';
       });
     } finally {
       setState(() {
@@ -93,8 +94,8 @@ class _FixedSendPageState extends State<FixedSendPage> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'SOL Gönder',
+        title: Text(
+          'Send SOL'.tr(), // Translated from 'SOL Gönder'
           style: TextStyle(
             color: Colors.white,
             fontSize: 18,
@@ -144,8 +145,8 @@ class _FixedSendPageState extends State<FixedSendPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Gönderen Cüzdan',
+                          Text(
+                            'Sender Wallet'.tr(), // Translated from 'Gönderen Cüzdan'
                             style: TextStyle(
                               color: Colors.grey,
                               fontSize: 12,
@@ -165,12 +166,12 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   ],
                 ),
               ),
-        
+
               const SizedBox(height: 24),
-        
+
               // Recipient Address
-              const Text(
-                'Alıcı Adresi',
+              Text(
+                'Recipient Address'.tr(), // Translated from 'Alıcı Adresi'
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -187,8 +188,8 @@ class _FixedSendPageState extends State<FixedSendPage> {
                 child: TextField(
                   controller: _recipientController,
                   style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: 'Solana cüzdan adresini girin',
+                  decoration: InputDecoration(
+                    hintText: 'Enter Solana wallet address'.tr(), // Translated from 'Solana cüzdan adresini girin'
                     hintStyle: TextStyle(color: Colors.grey),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.all(16),
@@ -196,12 +197,12 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   ),
                 ),
               ),
-        
+
               const SizedBox(height: 20),
-        
+
               // Amount
-              const Text(
-                'Miktar (SOL)',
+               Text(
+                'Amount (SOL)'.tr(), // Translated from 'Miktar (SOL)'
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -224,7 +225,7 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   ),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(
-                    hintText: '0.0',
+                    hintText: 'Min 0.001',
                     hintStyle: TextStyle(color: Colors.grey),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.all(16),
@@ -232,12 +233,12 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   ),
                 ),
               ),
-        
+
               const SizedBox(height: 20),
-        
+
               // Memo (Optional)
-              const Text(
-                'Not (Opsiyonel)',
+              Text(
+                'Memo (Optional)'.tr(), // Translated from 'Not (Opsiyonel)'
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -255,8 +256,8 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   controller: _memoController,
                   style: const TextStyle(color: Colors.white),
                   maxLines: 3,
-                  decoration: const InputDecoration(
-                    hintText: 'İşlem notu ekleyin (opsiyonel)',
+                  decoration: InputDecoration(
+                    hintText: 'Add a transaction note (optional)'.tr(), // Translated from 'İşlem notu ekleyin (opsiyonel)'
                     hintStyle: TextStyle(color: Colors.grey),
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.all(16),
@@ -264,9 +265,9 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   ),
                 ),
               ),
-        
+
               const SizedBox(height: 32),
-        
+
               // Send Button
               SizedBox(
                 width: double.infinity,
@@ -282,7 +283,7 @@ class _FixedSendPageState extends State<FixedSendPage> {
                     elevation: 0,
                   ),
                   child: _isSending
-                      ? const Row(
+                      ? Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SizedBox(
@@ -295,7 +296,7 @@ class _FixedSendPageState extends State<FixedSendPage> {
                       ),
                       SizedBox(width: 12),
                       Text(
-                        'Gönderiliyor...',
+                        'Sending...'.tr(), // Translated from 'Gönderiliyor...'
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -303,8 +304,8 @@ class _FixedSendPageState extends State<FixedSendPage> {
                       ),
                     ],
                   )
-                      : const Text(
-                    'SOL GÖNDER',
+                      : Text(
+                    'SEND SOL'.tr(), // Translated from 'SOL GÖNDER'
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -312,9 +313,9 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   ),
                 ),
               ),
-        
+
               const SizedBox(height: 24),
-        
+
               // Status Message
               if (_statusMessage.isNotEmpty)
                 Container(
@@ -358,9 +359,9 @@ class _FixedSendPageState extends State<FixedSendPage> {
                     ],
                   ),
                 ),
-        
+
               const Spacer(),
-        
+
               // Security Notice
               Container(
                 padding: const EdgeInsets.all(16),
@@ -385,12 +386,12 @@ class _FixedSendPageState extends State<FixedSendPage> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Expanded(
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Güvenlik Uyarısı',
+                            'Security Warning'.tr(), // Translated from 'Güvenlik Uyarısı'
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 14,
@@ -399,7 +400,7 @@ class _FixedSendPageState extends State<FixedSendPage> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Alıcı adresini dikkatli kontrol edin. SOL transferleri geri alınamaz. Yanlış adrese gönderilen tokenlar kaybolabilir.',
+                            'Carefully check the recipient address. SOL transfers are irreversible. Tokens sent to the wrong address may be lost.'.tr(), // Translated from 'Alıcı adresini dikkatli kontrol edin. SOL transferleri geri alınamaz. Yanlış adrese gönderilen tokenlar kaybolabilir.'
                             style: TextStyle(
                               color: Colors.grey,
                               fontSize: 12,
@@ -411,7 +412,7 @@ class _FixedSendPageState extends State<FixedSendPage> {
                   ],
                 ),
               ),
-        
+
               const SizedBox(height: 16),
             ],
           ),
