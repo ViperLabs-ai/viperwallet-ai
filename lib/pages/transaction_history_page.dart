@@ -70,7 +70,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
       _errorMessage = '';
     });
 
-    final String heliusApiKey = '774e9e08-9268-49f2-95c0-f1f05666f96e'; // Helius API anahtarınız
+    final String heliusApiKey = ''; // Helius API anahtarınız
     final String walletAddress = widget.wallet.address;
 
     try {
@@ -79,7 +79,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
 
       // Helius Transactions API'ye POST isteği
       final response = await http.post(
-        Uri.parse('https://api.helius.xyz/v0/addresses/$walletAddress/transactions/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e'),
+        Uri.parse('https://api.helius.xyz/v0/addresses/$walletAddress/transactions/?api-key='),
         headers: <String, String>{
           'Content-Type': 'application/json',
         },

@@ -147,7 +147,7 @@ class _DashboardPageState extends State<DashboardPage>
 
       // Solana client oluştur
       final client = SolanaClient(
-        rpcUrl: Uri.parse('https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e'),
+        rpcUrl: Uri.parse('https://mainnet.helius-rpc.com/?api-key='),
         websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
       );
 

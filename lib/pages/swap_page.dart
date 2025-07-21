@@ -72,7 +72,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
   // Updated RPC endpoints - more reliable ones
   final List<Map<String, dynamic>> _rpcEndpoints = [
     {
-      'url': 'https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e',
+      'url': 'https://mainnet.helius-rpc.com/?api-key=',
       'name': 'Solana Labs',
       'maxTxSize': 1232,
     },
@@ -464,7 +464,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
   // New function to fetch token balances using Helius
   Future<List<Map<String, dynamic>>> fetchTokenBalancesFromHelius(String walletAddress) async {
-    const apiKey = '774e9e08-9268-49f2-95c0-f1f05666f96e';
+    const apiKey = '';
     final url = Uri.parse('https://mainnet.helius-rpc.com/?api-key=$apiKey');
 
     final response = await http.post(
@@ -581,7 +581,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       print('🔍 Loading SOL balance for wallet: ${widget.wallet.address}');
 
       final client = SolanaClient(
-        rpcUrl: Uri.parse('https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e'),
+        rpcUrl: Uri.parse('https://mainnet.helius-rpc.com/?api-key='),
         websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
       );
 

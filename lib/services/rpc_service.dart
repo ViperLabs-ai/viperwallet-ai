@@ -3,7 +3,7 @@ import 'package:solana/solana.dart';
 class RpcService {
   // Sadece bu tek endpoint'i kullanmak için listeyi daraltın.
   static final List<String> _endpoints = [
-    'https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e',
+    'https://mainnet.helius-rpc.com/?api-key=',
   ];
 
   static int _currentEndpointIndex = 0;
