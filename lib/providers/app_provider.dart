@@ -1,5 +1,7 @@
+// providers/app_provider.dart
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../security/wallet_security.dart'; // WalletSecurity'yi import ediyoruz
 
 class AppProvider extends ChangeNotifier {
   Locale _locale = const Locale('en');
@@ -36,5 +38,16 @@ class AppProvider extends ChangeNotifier {
     } catch (e) {
       print('❌ Locale saving error: $e');
     }
+  }
+
+  // Cüzdan verilerini siler
+  Future<void> deleteWalletData() async {
+    await WalletSecurity.deleteWalletData();
+    notifyListeners();
+  }
+
+  // Cüzdanın var olup olmadığını kontrol eder
+  Future<bool> hasWallet() async {
+    return await WalletSecurity.hasWallet();
   }
 }

@@ -1,14 +1,9 @@
 import 'package:solana/solana.dart';
 
 class RpcService {
+  // Sadece bu tek endpoint'i kullanmak için listeyi daraltın.
   static final List<String> _endpoints = [
-    'https://api.mainnet-beta.solana.com',
-    /*'https://solana-mainnet.g.alchemy.com/v2/demo',
-    'https://rpc.ankr.com/solana',
-    'https://solana-api.projectserum.com',
-    'https://mainnet.solana-rpc.com',
-    'https://solana.public-rpc.com',
-    'https://api.metaplex.solana.com',*/
+    'https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e',
   ];
 
   static int _currentEndpointIndex = 0;
@@ -28,6 +23,8 @@ class RpcService {
   static Future<T> executeWithFallback<T>(
       Future<T> Function(RpcClient client) operation,
       ) async {
+    // Tek bir endpoint olduğu için döngü tek bir iterasyon yapacaktır.
+    // Yine de hata yönetimi ve yeniden deneme mantığı korunmuş olur.
     for (int i = 0; i < _endpoints.length; i++) {
       final endpointIndex = (_currentEndpointIndex + i) % _endpoints.length;
       final endpoint = _endpoints[endpointIndex];
@@ -35,29 +32,27 @@ class RpcService {
       try {
         print('🔄 RPC denemesi ${i + 1}/${_endpoints.length}: $endpoint');
 
-        final client = RpcClient(endpoint);
-        final result = await operation(client);
+        // Her denemede yeni bir RpcClient oluşturmak en güvenli yoldur.
+        final clientAttempt = RpcClient(endpoint);
+        final result = await operation(clientAttempt);
 
-        // Başarılı olursa bu endpointi kaydet
+        // Başarılı olursa bu endpointi kaydet (tek endpoint zaten budur)
         _currentEndpointIndex = endpointIndex;
-        _client = client;
+        _client = clientAttempt;
 
         print('✅ RPC başarılı: $endpoint');
         return result;
       } catch (e) {
         print('❌ RPC hatası ($endpoint): $e');
 
-        // Son endpoint ise hata fırlat
-        if (i == _endpoints.length - 1) {
-          throw Exception('Tüm RPC endpointleri başarısız oldu: $e');
-        }
-
-        // Değilse bir sonraki endpoint ile devam et
-        continue;
+        // Tek endpoint olduğu için doğrudan hata fırlat.
+        // Diğer endpointler olmadığı için devam etme şansı yok.
+        throw Exception('Tek RPC endpointi de başarısız oldu: $e');
       }
     }
 
-    throw Exception('Tüm RPC endpointleri başarısız oldu');
+    // Bu noktaya ulaşılmaz, çünkü hata ya try/catch içinde yakalanır ya da fırlatılır.
+    throw Exception('Beklenmeyen bir hata oluştu ve RPC işlemi tamamlanamadı.');
   }
 
   static Future<bool> isConnected() async {
@@ -65,6 +60,7 @@ class RpcService {
       await client.getHealth();
       return true;
     } catch (e) {
+      print('❌ Bağlantı testi başarısız: $e');
       return false;
     }
   }

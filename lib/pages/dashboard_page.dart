@@ -16,7 +16,26 @@ import 'receive_page.dart';
 import 'swap_page.dart';
 import 'transaction_history_page.dart';
 import '../services/rpc_service.dart';
-import 'package:easy_localization/easy_localization.dart'; // Added easy_localization import
+import 'package:easy_localization/easy_localization.dart';
+
+// Ensure this constant is defined somewhere accessible, e.g., in a utils file or directly here.
+const int lamportsPerSol = 1000000000;
+
+/// A simple data class to represent a token account from the public Solscan API.
+/// (This class is not strictly used anymore as Solscan API is removed, but kept for reference if needed)
+class TokenAccount {
+  final String tokenAddress;
+  final String tokenAccount;
+  final int decimals;
+  final double amount;
+
+  TokenAccount({
+    required this.tokenAddress,
+    required this.tokenAccount,
+    required this.amount,
+    required this.decimals,
+  });
+}
 
 class DashboardPage extends StatefulWidget {
   final Ed25519HDKeyPair wallet;
@@ -29,7 +48,6 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage>
     with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-
   @override
   bool get wantKeepAlive => true;
 
@@ -41,15 +59,6 @@ class _DashboardPageState extends State<DashboardPage>
   List<Map<String, dynamic>> _tokenBalances = [];
   bool _isLoadingTokens = false;
 
-  late AnimationController _refreshController;
-  late AnimationController _cardController;
-  late AnimationController _pulseController;
-  late AnimationController _loadingController;
-  late Animation<double> _cardAnimation;
-  late Animation<double> _pulseAnimation;
-  late Animation<double> _rotationAnimation;
-  late Animation<double> _scaleAnimation;
-
   double _solPrice = 0.0;
   double _dailyChange = 0.0;
   double _weeklyChange = 0.0;
@@ -60,11 +69,11 @@ class _DashboardPageState extends State<DashboardPage>
   double _walletDailyChange = 0.0;
   double _walletWeeklyChange = 0.0;
   double _walletMonthlyChange = 0.0;
+  double _totalWalletValue = 0.0; // Added for total wallet value
 
   List<Map<String, dynamic>> _recentTransactions = [];
   bool _isLoadingTransactions = false;
 
-  String _networkStatus = '';
   bool _isNetworkConnected = false;
   int _retryCount = 0;
   static const int _maxRetries = 3;
@@ -72,60 +81,13 @@ class _DashboardPageState extends State<DashboardPage>
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadAllData();
     });
   }
 
-  void _initializeAnimations() {
-    _refreshController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-
-    _cardController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    );
-
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 2000),
-      vsync: this,
-    );
-
-    _loadingController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
-
-    _cardAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _cardController, curve: Curves.easeOutCubic),
-    );
-
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _rotationAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _loadingController, curve: Curves.linear),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _loadingController, curve: Curves.elasticOut),
-    );
-
-    _cardController.forward();
-    _pulseController.repeat(reverse: true);
-    _loadingController.repeat();
-  }
-
   @override
   void dispose() {
-    _refreshController.dispose();
-    _cardController.dispose();
-    _pulseController.dispose();
-    _loadingController.dispose();
     super.dispose();
   }
 
@@ -134,23 +96,20 @@ class _DashboardPageState extends State<DashboardPage>
 
     setState(() {
       _isLoading = true;
-      _networkStatus = 'Connecting...'.tr(); // Localized
       _retryCount = 0;
     });
-
-    _refreshController.repeat();
 
     try {
       // SOL bakiyesini yükle
       await _loadSolBalance();
       if (!mounted) return;
 
-      // Token bakiyelerini yükle
-      await _loadTokenBalances();
-      if (!mounted) return;
-
       // SOL fiyat verilerini yükle
       await _loadSolPriceData();
+      if (!mounted) return;
+
+      // Token bakiyelerini yükle (fiyat ve değer hesaplaması dahil)
+      await _loadTokenBalances(widget.wallet.address);
       if (!mounted) return;
 
       // Transaction history'yi yükle
@@ -159,45 +118,36 @@ class _DashboardPageState extends State<DashboardPage>
 
       setState(() {
         _isNetworkConnected = true;
-        _networkStatus = 'Connected'.tr(); // Localized
       });
-
     } catch (e) {
       print('❌ Data loading error: $e');
       if (mounted) {
         setState(() {
           _isNetworkConnected = false;
-          _networkStatus = 'Connection Error'.tr(); // Localized
           _retryCount++;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
         });
       }
     }
 
     _calculateWalletChanges();
-
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
-
-    _refreshController.stop();
-    _refreshController.reset();
+    _calculateTotalWalletValue(); // Calculate total wallet value after all data is loaded
   }
 
   Future<void> _loadSolBalance() async {
     if (!mounted) return;
 
     try {
-      setState(() {
-        _networkStatus = 'Loading SOL balance...'.tr(); // Localized
-      });
-
       print('🔍 Loading balance for wallet: ${widget.wallet.address}');
 
       // Solana client oluştur
       final client = SolanaClient(
-        rpcUrl: Uri.parse('https://api.mainnet-beta.solana.com'),
+        rpcUrl: Uri.parse('https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e'),
         websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
       );
 
@@ -213,108 +163,228 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _solBalance = balanceInSol;
-          _networkStatus = 'SOL balance: ${balanceInSol.toStringAsFixed(6)}'.tr(); // Localized
         });
       }
-
     } catch (e) {
       print('❌ Balance loading error: $e');
       if (mounted) {
         setState(() {
           _solBalance = 0.0;
-          _networkStatus = 'Balance loading failed: ${e.toString()}'.tr(); // Localized
         });
       }
       rethrow;
     }
   }
 
-  Future<void> _loadTokenBalances() async {
+  /// Fetches token accounts from the public Solscan API.
+  /// Note: Public APIs may have rate limits or change their data format without notice.
+  /// For production, consider official RPC providers (like Helius) or SDKs.
+  /// This function is no longer used directly in _loadTokenBalances but kept for reference.
+  Future<List<TokenAccount>> fetchTokenAccountsPublic(String walletAddress) async {
+    final url = Uri.parse('https://public-api.solscan.io/account/tokens?account=$walletAddress');
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      // Data format may differ from pro-api, careful parsing needed
+      final List<dynamic> tokens = data;
+      return tokens.map((json) {
+        return TokenAccount(
+          tokenAddress: json['tokenAddress'],
+          tokenAccount: json['tokenAccount'],
+          decimals: json['decimals'] ?? 0,
+          amount: (json['tokenAmount'] != null)
+              ? (json['tokenAmount']['uiAmount'] as num).toDouble()
+              : 0,
+        );
+      }).toList();
+    } else {
+      throw Exception('Token accounts could not be retrieved from Solscan public API: ${response.statusCode}');
+    }
+  }
+
+  Future<void> _loadTokenBalances(String walletAddress) async {
     if (!mounted) return;
 
     setState(() {
       _isLoadingTokens = true;
-      _networkStatus = 'Loading token balances...'.tr(); // Localized
     });
 
     try {
-      print('🪙 Loading token balances for wallet: ${widget.wallet.address}');
+      List<Map<String, dynamic>> fetchedTokens = [];
 
-      final client = SolanaClient(
-        rpcUrl: Uri.parse('https://api.mainnet-beta.solana.com'),
-        websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
-      );
+      // Helius API'den token bakiyelerini al
+      try {
+        fetchedTokens.addAll(await fetchTokenBalancesFromHelius(walletAddress));
+      } catch (e) {
+        print('Error fetching from Helius: $e');
+      }
 
-      // Token accounts'ları al
-      final tokenAccounts = await client.rpcClient.getTokenAccountsByOwner(
-        widget.wallet.address,
-        const TokenAccountsFilter.byProgramId('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-        encoding: Encoding.jsonParsed,
-      );
+      // Solscan API'den token bakiyelerini al
+      try {
+        fetchedTokens.addAll(await fetchTokenBalancesFromSolscan(walletAddress));
+      } catch (e) {
+        print('Error fetching from Solscan: $e');
+      }
 
-      print('🪙 Found ${tokenAccounts.value.length} token accounts');
+      // Solana Explorer API'den token bakiyelerini al
+      try {
+        List<Map<String, dynamic>> explorerTokens = await fetchTokenBalancesFromExplorer(walletAddress);
+        for (var token in explorerTokens) {
+          bool exists = fetchedTokens.any((element) => element['mint'] == token['mint']);
+          if (!exists) {
+            final metadata = await _getTokenMetadata(token['mint']);
+            token['name'] = metadata['name'];
+            token['symbol'] = metadata['symbol'];
+            token['logoURI'] = metadata['logoURI'];
+            token['verified'] = metadata['verified'];
+            fetchedTokens.add(token);
+          }
+        }
+        if (mounted) {
+          setState(() {
+            _tokenBalances = fetchedTokens; // Update the state variable
+            _isLoadingTokens = false; // Set loading state to false
+          });
+        }
+      } catch (e) {
+        print('Error fetching from Solana Explorer: $e');
+      }
 
+      // Her bir token için fiyatı çek ve değeri hesapla
+      for (var token in fetchedTokens) {
+        final mint = token['mint'] as String;
+        final balance = token['balance'] as double;
+        double price = await _getTokenPrice(mint);
+        token['price'] = price;
+        token['value'] = balance * price; // Correctly multiplying balance by price
+      }
+
+      if (mounted) {
+        setState(() {
+          _tokenBalances = fetchedTokens;
+          _isLoadingTokens = false;
+        });
+      }
+
+      print('Loaded tokens: $_tokenBalances');
+    } catch (e) {
+      print('Error loading token balances: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingTokens = false;
+        });
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchTokenBalancesFromSolscan(String walletAddress) async {
+    final url = Uri.parse('https://public-api.solscan.io/account/tokens?account=$walletAddress');
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      final List<dynamic> tokens = data['data'] ?? [];
+      List<Map<String, dynamic>> tokenList = [];
+
+      for (var token in tokens) {
+        tokenList.add({
+          'mint': token['tokenAddress'],
+          'balance': token['tokenAmount']['uiAmount'],
+          'decimals': token['decimals'],
+          'name': token['tokenInfo']['name'] ?? 'Unknown Token',
+          'symbol': token['tokenInfo']['symbol'] ?? token['tokenAddress'].substring(0, 6),
+          'logoURI': token['tokenInfo']['logoURI'],
+          'verified': token['tokenInfo']['verified'] ?? false,
+        });
+      }
+      return tokenList;
+    } else {
+      throw Exception('Solscan API error: ${response.statusCode}');
+    }
+  }
+
+// Solana Explorer API ile token bakiyelerini çekme
+  Future<List<Map<String, dynamic>>> fetchTokenBalancesFromExplorer(String walletAddress) async {
+    final url = Uri.parse('https://api.solana.com/v1/getTokenAccountsByOwner?owner=$walletAddress');
+    final response = await http.get(url);
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      final List<dynamic> tokens = data['result'] ?? [];
+      List<Map<String, dynamic>> tokenList = [];
+
+      for (var token in tokens) {
+        tokenList.add({
+          'mint': token['account']['data']['parsed']['info']['mint'],
+          'balance': token['account']['data']['parsed']['info']['tokenAmount']['uiAmount'],
+          'decimals': token['account']['data']['parsed']['info']['tokenAmount']['decimals'],
+          'name': 'Unknown Token', // Explorer API'den isim almak zor olabilir
+          'symbol': 'Unknown', // Explorer API'den sembol almak zor olabilir
+          'logoURI': null,
+          'verified': false,
+        });
+      }
+      return tokenList;
+    } else {
+      throw Exception('Explorer API error: ${response.statusCode}');
+    }
+  }
+
+// Helius API ile token bakiyelerini çekme
+  Future<List<Map<String, dynamic>>> fetchTokenBalancesFromHelius(String walletAddress) async {
+    const apiKey = '774e9e08-9268-49f2-95c0-f1f05666f96e';
+    final url = Uri.parse('https://mainnet.helius-rpc.com/?api-key=$apiKey');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        "jsonrpc": "2.0",
+        "id": "1",
+        "method": "getAssetsByOwner",
+        "params": {
+          "ownerAddress": walletAddress,
+          "page": 1,
+          "limit": 100,
+          "displayOptions": {
+            "showFungible": true,
+            "showZeroBalance": false,
+            "showNativeBalance": false,
+          }
+        }
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final List<dynamic> items = data['result']['items'] ?? [];
       List<Map<String, dynamic>> tokens = [];
 
-      for (final account in tokenAccounts.value) {
-        try {
-          final accountData = account.account.data;
-          if (accountData is ParsedAccountData) {
-            final parsed = accountData.parsed;
-            if (parsed is Map<String, dynamic>) {
-              final info = parsed['info'] as Map<String, dynamic>?;
-              if (info != null) {
-                final tokenAmount = info['tokenAmount'] as Map<String, dynamic>?;
-                final mint = info['mint'] as String?;
+      for (var item in items) {
+        if (item['token_info'] != null && item['token_info']['balance'] != null) {
+          final mint = item['id'];
+          final balance = (item['token_info']['balance'] as num).toDouble();
+          final decimals = item['token_info']['decimals'] ?? 0;
+          final uiAmount = balance / (pow(10, decimals));
 
-                if (tokenAmount != null && mint != null) {
-                  final uiAmount = tokenAmount['uiAmount'];
-                  final decimals = tokenAmount['decimals'] as int? ?? 0;
-
-                  // Sadece bakiyesi olan tokenları ekle
-                  if (uiAmount != null && uiAmount > 0) {
-                    // Token metadata'sını al
-                    final tokenInfo = await _getTokenMetadata(mint);
-
-                    tokens.add({
-                      'mint': mint,
-                      'balance': uiAmount,
-                      'decimals': decimals,
-                      'name': tokenInfo['name'] ?? 'Unknown Token'.tr(), // Localized
-                      'symbol': tokenInfo['symbol'] ?? mint.substring(0, 6),
-                      'logoURI': tokenInfo['logoURI'],
-                      'verified': tokenInfo['verified'] ?? false,
-                    });
-                  }
-                }
-              }
-            }
+          if (uiAmount > 0) {
+            final tokenInfo = await _getTokenMetadata(mint); // Token metadata al
+            tokens.add({
+              'mint': mint,
+              'balance': uiAmount,
+              'decimals': decimals,
+              'name': tokenInfo['name'] ?? 'Unknown Token',
+              'symbol': tokenInfo['symbol'] ?? mint.substring(0, 6),
+              'logoURI': tokenInfo['logoURI'],
+              'verified': tokenInfo['verified'] ?? false,
+            });
           }
-        } catch (e) {
-          print('❌ Error processing token account: $e');
-          continue;
         }
       }
-
-      print('✅ Loaded ${tokens.length} tokens with balance');
-
-      if (mounted) {
-        setState(() {
-          _tokenBalances = tokens;
-          _isLoadingTokens = false;
-          _networkStatus = 'Loaded ${tokens.length} tokens'.tr(); // Localized
-        });
-      }
-
-    } catch (e) {
-      print('❌ Token balance loading error: $e');
-      if (mounted) {
-        setState(() {
-          _tokenBalances = [];
-          _isLoadingTokens = false;
-          _networkStatus = 'Token loading failed'.tr(); // Localized
-        });
-      }
+      return tokens;
+    } else {
+      throw Exception('Helius API error: ${response.statusCode}');
     }
   }
 
@@ -351,14 +421,39 @@ class _DashboardPageState extends State<DashboardPage>
     };
   }
 
+  Future<double> _getTokenPrice(String mint) async {
+    try {
+      // Updated to Jupiter Price API V3 (lite URL)
+      final response = await http.get(
+        Uri.parse('https://lite-api.jup.ag/price/v3?ids=$mint'),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'ViperWallet/1.0',
+        },
+      ).timeout(const Duration(seconds: 10)); // Increased timeout
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data[mint] != null) { // Accessing directly from data[mint] as per V3 response
+          return (data[mint]['usdPrice'] as num).toDouble(); // Corrected to 'usdPrice'
+        } else {
+          print('❌ Token price data not found in response for $mint. Body: ${response.body}');
+        }
+      } else {
+        print('❌ Token price API returned status code ${response.statusCode} for $mint. Body: ${response.body}');
+      }
+    } on http.ClientException catch (e) {
+      print('❌ Token price ClientException for $mint: $e');
+    } on Exception catch (e) {
+      print('❌ Token price general error for $mint: $e');
+    }
+    return 0.0; // Default to 0 if price cannot be fetched
+  }
+
   Future<void> _loadSolPriceData() async {
     if (!mounted) return;
 
     try {
-      setState(() {
-        _networkStatus = 'Loading SOL price...'.tr(); // Localized
-      });
-
       // CoinGecko API
       final response = await http.get(
         Uri.parse(
@@ -375,7 +470,7 @@ class _DashboardPageState extends State<DashboardPage>
           'User-Agent': 'ViperWallet/1.0',
           'Accept': 'application/json',
         },
-      ).timeout(const Duration(seconds: 10));
+      ).timeout(const Duration(seconds: 15)); // Increased timeout
 
       if (response.statusCode == 200 && mounted) {
         final data = json.decode(response.body);
@@ -388,20 +483,18 @@ class _DashboardPageState extends State<DashboardPage>
           _monthlyChange = (solData['usd_30d_change'] as num?)?.toDouble() ?? 0.0;
           _dailyVolume = (solData['usd_24h_vol'] as num?)?.toDouble() ?? 0.0;
           _marketCap = (solData['usd_market_cap'] as num?)?.toDouble() ?? 0.0;
-          _networkStatus = 'SOL price: \$${_solPrice.toStringAsFixed(2)}'.tr(); // Localized
         });
 
         print('💲 SOL Price loaded: \$${_solPrice.toStringAsFixed(2)}');
       } else {
+        print('❌ Price API returned status code ${response.statusCode}. Body: ${response.body}');
         throw Exception('Price API returned ${response.statusCode}');
       }
-
     } catch (e) {
       print('❌ Price loading error: $e');
       if (mounted) {
         setState(() {
           _solPrice = 0.0;
-          _networkStatus = 'Price loading failed'.tr(); // Localized
         });
       }
     }
@@ -412,14 +505,13 @@ class _DashboardPageState extends State<DashboardPage>
 
     setState(() {
       _isLoadingTransactions = true;
-      _networkStatus = 'Loading transactions...'.tr(); // Localized
     });
 
     try {
       print('📜 Loading transaction history for: ${widget.wallet.address}');
 
       final client = SolanaClient(
-        rpcUrl: Uri.parse('https://api.mainnet-beta.solana.com'),
+        rpcUrl: Uri.parse('https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e'),
         websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
       );
 
@@ -434,7 +526,6 @@ class _DashboardPageState extends State<DashboardPage>
 
       for (final sig in signatures) {
         try {
-          // Transaction detaylarını al
           final txDetail = await client.rpcClient.getTransaction(
             sig.signature,
             encoding: Encoding.json,
@@ -452,27 +543,25 @@ class _DashboardPageState extends State<DashboardPage>
               'success': sig.err == null,
             });
           } else {
-            // Detay alınamazsa basit bilgilerle ekle
             transactions.add({
               'signature': sig.signature,
               'slot': sig.slot,
               'blockTime': sig.blockTime,
               'confirmationStatus': sig.confirmationStatus,
               'err': sig.err,
-              'fee': 5000, // Default fee
+              'fee': 5000, // Default fee if txDetail is null
               'success': sig.err == null,
             });
           }
         } catch (e) {
           print('❌ Transaction detail error for ${sig.signature}: $e');
-          // Hata olsa bile basit bilgilerle ekle
           transactions.add({
             'signature': sig.signature,
             'slot': sig.slot,
             'blockTime': sig.blockTime,
             'confirmationStatus': sig.confirmationStatus,
             'err': sig.err,
-            'fee': 5000,
+            'fee': 5000, // Default fee on error
             'success': sig.err == null,
           });
         }
@@ -481,19 +570,16 @@ class _DashboardPageState extends State<DashboardPage>
       if (mounted) {
         setState(() {
           _recentTransactions = transactions;
-          _networkStatus = 'Loaded ${transactions.length} transactions'.tr(); // Localized
           _isLoadingTransactions = false;
         });
       }
 
       print('✅ Transaction history loaded: ${transactions.length} items');
-
     } catch (e) {
       print('❌ Transaction history error: $e');
       if (mounted) {
         setState(() {
           _recentTransactions = [];
-          _networkStatus = 'Transaction loading failed'.tr(); // Localized
           _isLoadingTransactions = false;
         });
       }
@@ -507,6 +593,16 @@ class _DashboardPageState extends State<DashboardPage>
       _walletWeeklyChange = portfolioValue * _weeklyChange / 100;
       _walletMonthlyChange = portfolioValue * _monthlyChange / 100;
     }
+  }
+
+  void _calculateTotalWalletValue() {
+    double total = _solBalance * _solPrice;
+    for (var token in _tokenBalances) {
+      total += (token['value'] as double? ?? 0.0);
+    }
+    setState(() {
+      _totalWalletValue = total;
+    });
   }
 
   void _copyAddress() {
@@ -624,41 +720,23 @@ class _DashboardPageState extends State<DashboardPage>
               valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
             ),
           ),
-        ] else if (_tokenBalances.isEmpty) ...[
-          _buildGlassCard(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.token,
-                      size: 48,
-                      color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Henüz token bulunamadı'.tr(), // Localized
-                      style: TextStyle(
-                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Cüzdanınızda token bakiyesi bulunmuyor'.tr(), // Localized
-                      style: TextStyle(
-                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
         ] else ...[
+          // Solana (SOL) token item - always displayed first
+          _buildTokenItem(
+            {
+              'mint': 'So11111111111111111111111111111111111111112', // SOL mint address
+              'balance': _solBalance,
+              'decimals': 9,
+              'name': 'Solana',
+              'symbol': 'SOL',
+              'logoURI': 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+              'verified': true,
+              'price': _solPrice,
+              'value': _solBalance * _solPrice,
+            },
+            isDark,
+          ),
+          // Other token items fetched from Helius
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -667,6 +745,40 @@ class _DashboardPageState extends State<DashboardPage>
               return _buildTokenItem(_tokenBalances[index], isDark);
             },
           ),
+          if (_tokenBalances.isEmpty && _solBalance == 0.0) // Only show "no tokens" if both SOL and other tokens are empty
+            _buildGlassCard(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.token,
+                        size: 48,
+                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Henüz token bulunamadı'.tr(), // Localized
+                        style: TextStyle(
+                          color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Cüzdanınızda token bakiyesi bulunmuyor'.tr(), // Localized
+                        style: TextStyle(
+                          color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ],
     );
@@ -678,6 +790,7 @@ class _DashboardPageState extends State<DashboardPage>
     final name = token['name'] as String;
     final logoURI = token['logoURI'] as String?;
     final verified = token['verified'] as bool;
+    final value = token['value'] as double? ?? 0.0; // Get token value
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -694,7 +807,7 @@ class _DashboardPageState extends State<DashboardPage>
                   color: const Color(0xFFFF6B35).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: logoURI != null
+                child: logoURI != null && logoURI.isNotEmpty
                     ? ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.network(
@@ -703,6 +816,7 @@ class _DashboardPageState extends State<DashboardPage>
                     height: 48,
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) {
+                      print('Error loading image for ${token['symbol']}: $error');
                       return const Icon(
                         Icons.token,
                         color: Color(0xFFFF6B35),
@@ -756,7 +870,7 @@ class _DashboardPageState extends State<DashboardPage>
                   ],
                 ),
               ),
-              // Balance
+              // Balance and Value
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -769,7 +883,7 @@ class _DashboardPageState extends State<DashboardPage>
                     ),
                   ),
                   Text(
-                    symbol,
+                    _formatCurrency(value), // Display token value in USD
                     style: TextStyle(
                       color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
                       fontSize: 12,
@@ -788,7 +902,6 @@ class _DashboardPageState extends State<DashboardPage>
   Widget build(BuildContext context) {
     super.build(context);
 
-    final totalValue = _solBalance * _solPrice;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
@@ -840,7 +953,7 @@ class _DashboardPageState extends State<DashboardPage>
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  _isNetworkConnected ? 'Online'.tr() : 'Offline'.tr(), // Localized
+                  _isNetworkConnected ? ''.tr() : ''.tr(), // Localized
                   style: TextStyle(
                     color: _isNetworkConnected ? Colors.green : Colors.orange,
                     fontSize: 10,
@@ -880,12 +993,9 @@ class _DashboardPageState extends State<DashboardPage>
                 HapticFeedback.mediumImpact();
                 _loadAllData();
               },
-              icon: RotationTransition(
-                turns: _refreshController,
-                child: const Icon(
-                  Icons.refresh,
-                  color: Color(0xFFFF6B35),
-                ),
+              icon: const Icon( // Removed RotationTransition
+                Icons.refresh,
+                color: Color(0xFFFF6B35),
               ),
             ),
           ),
@@ -911,78 +1021,7 @@ class _DashboardPageState extends State<DashboardPage>
             ],
           ),
         ),
-        child: _isLoading
-            ? Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ScaleTransition(
-                scale: _scaleAnimation,
-                child: Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0x00FF6B35),
-                        Color(0x00FF8C42),
-                        Color(0x00FFB347),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF6B35).withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Image.asset('assets/icon/icon1.png'),
-                ),
-              ),
-
-              const SizedBox(height: 40),
-
-              ScaleTransition(
-                scale: _pulseAnimation,
-                child: Text(
-                  'Loading Wallet...'.tr(), // Localized
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: (isDark ? Colors.white : Colors.black).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: const Color(0xFFFF6B35).withOpacity(0.3),
-                  ),
-                ),
-                child: Text(
-                  _networkStatus,
-                  style: TextStyle(
-                    color: (isDark ? Colors.white : Colors.black87).withOpacity(0.8),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        )
-            : SafeArea(
+        child: SafeArea(
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
@@ -992,11 +1031,8 @@ class _DashboardPageState extends State<DashboardPage>
                   delegate: SliverChildListDelegate([
                     const SizedBox(height: 20),
 
-                    // Ana SOL bakiye kartı
-                    FadeTransition(
-                      opacity: _cardAnimation,
-                      child: _buildMainBalanceCard(totalValue, isDark),
-                    ),
+                    // Total Wallet Balance (Phantom Wallet style)
+                    _buildTotalWalletBalanceCard(isDark),
 
                     const SizedBox(height: 28),
 
@@ -1005,27 +1041,22 @@ class _DashboardPageState extends State<DashboardPage>
 
                     const SizedBox(height: 28),
 
-                    // Token balances section - Market data'nın hemen üstüne taşındı
-                    //_buildTokenBalancesSection(isDark),
+                    // Token balances section
+                    _buildTokenBalancesSection(isDark),
 
-                    //const SizedBox(height: 28),
+                    const SizedBox(height: 28),
 
                     // Market data
-
                     _buildMarketDataSection(isDark),
                     const SizedBox(height: 28),
 
-
                     // Price changes
-
                     _buildPriceChangesSection(isDark),
                     const SizedBox(height: 28),
 
                     // Recent transactions
-                    if (_recentTransactions.isNotEmpty) ...[
-                      _buildRecentTransactionsSection(isDark),
-                      const SizedBox(height: 28),
-                    ],
+                    _buildRecentTransactionsSection(isDark),
+                    const SizedBox(height: 28),
 
                     // Wallet address
                     _buildWalletAddressCard(isDark),
@@ -1041,132 +1072,90 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  Widget _buildMainBalanceCard(double totalValue, bool isDark) {
+  Widget _buildTotalWalletBalanceCard(bool isDark) {
     return _buildGlassCard(
       gradientColors: [const Color(0xFFFF6B35), const Color(0xFFFF8C42)],
       child: Padding(
         padding: const EdgeInsets.all(28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.25),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const FaIcon(
-                    FontAwesomeIcons.wallet,
-                    color: Colors.white,
-                    size: 24,
-                  ),
+        child: Center(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 20),
+              Text(
+                'Total Balance',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.normal,
+                  letterSpacing: -1,
                 ),
-                const Spacer(),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'SOL Balance'.tr(), // Localized
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.9),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _formatCurrency(_totalWalletValue),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 38,
+                  fontWeight: FontWeight.normal,
+                  letterSpacing: -1,
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (_solPrice > 0) ...[
+                if (_walletDailyChange != 0) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: (_walletDailyChange >= 0 ? Colors.transparent : Colors.transparent).withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FaIcon(
+                              _walletDailyChange >= 0 ? FontAwesomeIcons.arrowTrendUp : FontAwesomeIcons.arrowTrendDown,
+                              color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '${_walletDailyChange >= 0 ? '+' : ''}${_formatCurrency(_walletDailyChange)}',
+                              style: TextStyle(
+                                color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '(24h)'.tr(), // Localized
+                              style: TextStyle(
+                                color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.8),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _formatCurrency(totalValue),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ],
+              ] else ...[
+                Text(
+                  'Price data loading...'.tr(), // Localized
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 16,
+                  ),
                 ),
               ],
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '${_solBalance.toStringAsFixed(6)} SOL',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 38,
-                fontWeight: FontWeight.bold,
-                letterSpacing: -1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_solPrice > 0) ...[
-              Text(
-                '≈ ${_formatCurrency(totalValue)}',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (_walletDailyChange != 0) ...[
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.25),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          FaIcon(
-                            _walletDailyChange >= 0 ? FontAwesomeIcons.arrowTrendUp : FontAwesomeIcons.arrowTrendDown,
-                            color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${_walletDailyChange >= 0 ? '+' : ''}${_formatCurrency(_walletDailyChange)}',
-                            style: TextStyle(
-                              color: _walletDailyChange >= 0 ? Colors.green : Colors.red,
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '(24h)'.tr(), // Localized
-                            style: TextStyle(
-                              color: (_walletDailyChange >= 0 ? Colors.green : Colors.red).withOpacity(0.8),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ] else ...[
-              Text(
-                'Price data loading...'.tr(), // Localized
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 16,
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1189,7 +1178,7 @@ class _DashboardPageState extends State<DashboardPage>
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => FixedSendPage(wallet: widget.wallet),
+                builder: (context) => FixedSendPage(wallet: widget.wallet), // Changed to FixedSendPage
               ),
             );
           },
@@ -1222,22 +1211,6 @@ class _DashboardPageState extends State<DashboardPage>
           },
           color: Colors.purple,
         ),
-        /*_buildActionButton(
-          icon: FontAwesomeIcons.images,
-          label: 'NFT'.tr(), // Localized
-          onTap: () {
-            HapticFeedback.lightImpact();
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => NFTPage(wallet: widget.wallet),
-              ),
-            );
-          },
-          color: Colors.blue,
-        ),
-
-         */
       ],
     );
   }
@@ -1328,46 +1301,46 @@ class _DashboardPageState extends State<DashboardPage>
 
   Widget _buildPriceChangesSection(bool isDark) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
         Text(
-          'Price Changes'.tr(), // Localized
-          style: TextStyle(
-            color: isDark ? Colors.white : Colors.black87,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        GridView.count(
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 0.8,
-          children: [
-            _buildPriceChangeCard(
-              period: '24 Hours'.tr(), // Localized
-              percentage: _dailyChange,
-              walletChange: _walletDailyChange,
-              icon: FontAwesomeIcons.clock,
-            ),
-            _buildPriceChangeCard(
-              period: '7 Days'.tr(), // Localized
-              percentage: _weeklyChange,
-              walletChange: _walletWeeklyChange,
-              icon: FontAwesomeIcons.calendarDay,
-            ),
-            _buildPriceChangeCard(
-              period: '30 Days'.tr(), // Localized
-              percentage: _monthlyChange,
-              walletChange: _walletMonthlyChange,
-              icon: FontAwesomeIcons.calendarDays,
-            ),
-          ],
-        ),
-      ],
+        'Price Changes'.tr(), // Localized
+    style: TextStyle(
+    color: isDark ? Colors.white : Colors.black87,
+    fontSize: 20,
+    fontWeight: FontWeight.bold,
+    ),
+    ),
+    const SizedBox(height: 16),
+    GridView.count(
+    crossAxisCount: 2,
+    crossAxisSpacing: 12,
+    mainAxisSpacing: 12,
+    shrinkWrap: true,
+    physics: const NeverScrollableScrollPhysics(),
+    childAspectRatio: 0.8,
+    children: [
+    _buildPriceChangeCard(
+    period: '24 Hours'.tr(), // Localized
+    percentage: _dailyChange,
+    walletChange: _walletDailyChange,
+    icon: FontAwesomeIcons.clock,
+    ),
+    _buildPriceChangeCard(
+    period: '7 Days'.tr(), // Localized
+    percentage: _weeklyChange,
+    walletChange: _walletWeeklyChange,
+    icon: FontAwesomeIcons.calendarDay,
+    ),
+    _buildPriceChangeCard(
+    period: '30 Days'.tr(), // Localized
+    percentage: _monthlyChange,
+    walletChange: _walletMonthlyChange,
+    icon: FontAwesomeIcons.calendarDays,
+    ),
+    ],
+    ),
+    ],
     );
   }
 
@@ -1388,6 +1361,7 @@ class _DashboardPageState extends State<DashboardPage>
             ),
             TextButton(
               onPressed: () {
+                // Navigate to TransactionHistoryPage
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1410,6 +1384,40 @@ class _DashboardPageState extends State<DashboardPage>
           const Center(
             child: CircularProgressIndicator(
               valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+            ),
+          ),
+        ] else if (_recentTransactions.isEmpty) ...[
+          _buildGlassCard(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.history,
+                      size: 48,
+                      color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No recent transactions'.tr(), // Localized
+                      style: TextStyle(
+                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.7),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Your transaction history will appear here'.tr(), // Localized
+                      style: TextStyle(
+                        color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ] else ...[

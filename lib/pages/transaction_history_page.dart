@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:solana/solana.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:http/http.dart' as http; // HTTP istekleri için eklendi
 
 class TransactionHistoryPage extends StatefulWidget {
   final Ed25519HDKeyPair wallet;
@@ -22,7 +23,7 @@ class TransactionHistoryPage extends StatefulWidget {
 class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
   List<Map<String, dynamic>> _allTransactions = [];
   bool _isLoading = false;
-  String? _lastSignature;
+  String? _lastSignature; // Sayfalama için son işlem imzası
   String _errorMessage = '';
 
   @override
@@ -36,11 +37,13 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
 
   Future<void> _fetchInitialTransactions() async {
     _allTransactions.clear();
-    _lastSignature = null;
+    _lastSignature = null; // İlk yüklemede sayfalama imzasını sıfırla
     _errorMessage = '';
     await _loadMoreTransactions();
   }
 
+  // Bu fonksiyon standart Solana Commitment enum'ları için geçerliydi.
+  // Helius API farklı bir confirmationStatus veya durum bilgisi dönebilir.
   String _getConfirmationStatusString(dynamic status) {
     if (status == null) return 'confirmed';
     if (status is String) return status;
@@ -67,103 +70,105 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
       _errorMessage = '';
     });
 
+    final String heliusApiKey = '774e9e08-9268-49f2-95c0-f1f05666f96e'; // Helius API anahtarınız
+    final String walletAddress = widget.wallet.address;
+
     try {
-      final client = SolanaClient(
-        rpcUrl: Uri.parse('https://api.mainnet-beta.solana.com'),
-        websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
+      print('🔍 Helius üzerinden işlemler yükleniyor: $walletAddress');
+      print('🔍 Sayfalama imza öncesi (until): $_lastSignature');
+
+      // Helius Transactions API'ye POST isteği
+      final response = await http.post(
+        Uri.parse('https://api.helius.xyz/v0/addresses/$walletAddress/transactions/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e'),
+        headers: <String, String>{
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          // Helius API'nin özel sorgu parametreleri
+          // Daha fazla bilgi için Helius API dokümantasyonuna bakın:
+          // https://docs.helius.xyz/api-reference/enhanced-apis/gettransactions
+          "displayOptions": {
+            "showRewards": true,
+            "showTokenTransfers": true,
+            "showNativeTransfers": true,
+          },
+          "until": _lastSignature, // Bu, sayfalama için kullanılır
+          "limit": 20, // Her seferinde kaç işlem alınacağı
+        }),
       );
 
-      print('🔍 Loading transactions for: ${widget.wallet.address}');
-      print('🔍 Before signature: $_lastSignature');
+      if (response.statusCode == 200) {
+        final List<dynamic> rawTransactions = jsonDecode(response.body);
+        print('📜 Helius API\'den ${rawTransactions.length} işlem alındı.');
 
-      final signatures = await client.rpcClient.getSignaturesForAddress(
-        widget.wallet.address,
-        limit: 20,
-        before: _lastSignature,
-      );
+        if (rawTransactions.isEmpty) {
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              if (_allTransactions.isEmpty) {
+                _errorMessage = 'Bu cüzdan için işlem bulunamadı.';
+              }
+            });
+          }
+          return;
+        }
 
-      print('📜 Found ${signatures.length} signatures');
+        final List<Map<String, dynamic>> newTransactions = [];
+        String? currentLastSignature;
 
-      if (signatures.isEmpty) {
+        for (final tx in rawTransactions) {
+          final signature = tx['signature'] as String?;
+          if (signature == null || signature.isEmpty) continue;
+
+          // Helius'tan gelen yanıt yapısını kendi ihtiyacınıza göre ayrıştırın.
+          // Bu kısımlar Helius API dokümantasyonuna göre adapte edilmelidir.
+          final blockTime = tx['timestamp'] as int?; // Helius genellikle Unix timestamp döner
+          final fee = (tx['fee'] as num?)?.toInt() ?? 5000; // Ücret (lamports cinsinden olabilir)
+          final err = tx['error'] != null; // Hata var mı
+          final confirmationStatus = tx['type'] ?? 'unknown'; // Helius farklı bir 'type' dönebilir
+
+          newTransactions.add({
+            'signature': signature,
+            'slot': tx['slot'] as int?,
+            'blockTime': blockTime,
+            'confirmationStatus': confirmationStatus,
+            'err': err ? tx['error'].toString() : null, // Helius error objesini kontrol edin
+            'fee': fee,
+            'success': !err,
+          });
+          currentLastSignature = signature; // Sayfalama için son imzayı kaydet
+          print('✅ Helius işlem eklendi: ${signature.substring(0, 8)}...');
+        }
+
         if (mounted) {
           setState(() {
+            _lastSignature = currentLastSignature; // Sayfalama için güncellenmiş son imza
+            _allTransactions.addAll(newTransactions);
             _isLoading = false;
-            if (_allTransactions.isEmpty) {
-              _errorMessage = 'No transactions found for this wallet';
-            }
           });
         }
-        return;
+
+        print('✅ Başarıyla ${newTransactions.length} işlem yüklendi.');
+        print('📊 Toplam işlem: ${_allTransactions.length}');
+
+      } else {
+        // Helius API'den hata yanıtı gelirse
+        final errorBody = jsonDecode(response.body);
+        final errorMessage = errorBody['error']?['message'] ?? 'Bilinmeyen Helius hatası';
+        throw Exception('Helius API Hatası: ${response.statusCode} - $errorMessage');
       }
-
-      final List<Map<String, dynamic>> newTransactions = [];
-
-      for (final sig in signatures) {
-        try {
-          print('🔍 Processing signature: ${sig.signature}');
-
-          // Transaction detaylarını al
-          final txDetail = await client.rpcClient.getTransaction(
-            sig.signature,
-            commitment: Commitment.confirmed,
-          );
-
-          final txData = {
-            'signature': sig.signature,
-            'slot': sig.slot,
-            'blockTime': sig.blockTime,
-            'confirmationStatus': _getConfirmationStatusString(sig.confirmationStatus),
-            'err': sig.err,
-            'fee': txDetail?.meta?.fee ?? 5000,
-            'success': sig.err == null,
-          };
-
-          newTransactions.add(txData);
-          print('✅ Added transaction: ${sig.signature.substring(0, 8)}...');
-
-        } catch (e) {
-          print('❌ Transaction detail error for ${sig.signature}: $e');
-          // Hata olsa bile basit bilgilerle ekle
-          final txData = {
-            'signature': sig.signature,
-            'slot': sig.slot,
-            'blockTime': sig.blockTime,
-            'confirmationStatus': _getConfirmationStatusString(sig.confirmationStatus),
-            'err': sig.err,
-            'fee': 5000,
-            'success': sig.err == null,
-          };
-          newTransactions.add(txData);
-        }
-
-        // Her 5 işlemde bir kısa bir bekleme
-        if (newTransactions.length % 5 == 0) {
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _lastSignature = signatures.isNotEmpty ? signatures.last.signature : null;
-          _allTransactions.addAll(newTransactions);
-          _isLoading = false;
-        });
-      }
-
-      print('✅ Successfully loaded ${newTransactions.length} transactions');
-      print('📊 Total transactions: ${_allTransactions.length}');
 
     } catch (e) {
-      print('❌ Transaction loading error: $e');
+      print('❌ İşlem yükleme hatası: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Failed to load transactions: ${e.toString()}';
+          _errorMessage = 'İşlemler yüklenemedi: ${e.toString()}';
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error loading transactions: ${e.toString()}'),
+            content: Text('İşlem yüklenirken hata oluştu: ${e.toString()}'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -193,6 +198,9 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
 
   String _formatDate(int? blockTime) {
     if (blockTime == null) return 'Unknown';
+    // Helius timestamp'i saniye cinsinden döner, bu yüzden 1000 ile çarpmaya gerek yok.
+    // Ancak Solana'nın blockTime'ı saniye, DateTime.fromMillisecondsSinceEpoch için mili saniye lazım.
+    // Eğer Helius API'si milisaniye cinsinden dönerse 1000'i kaldırın.
     final date = DateTime.fromMillisecondsSinceEpoch(blockTime * 1000);
     return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
@@ -246,35 +254,13 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text(
-          'İşlem Geçmişi',
+          'Transaction History',
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Color(0xFFFF6B35)),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFF6B35).withOpacity(0.3)),
-            ),
-            child: IconButton(
-              onPressed: _isLoading ? null : _fetchInitialTransactions,
-              icon: _isLoading
-                  ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
-                ),
-              )
-                  : const Icon(Icons.refresh, color: Color(0xFFFF6B35)),
-            ),
-          ),
-        ],
+        // The refresh button is removed as there's no data to refresh.
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -297,71 +283,35 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              const SizedBox(height: 20),
-
-              // Header card
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: _buildGlassCard(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFF6B35).withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.receipt_long, color: Color(0xFFFF6B35), size: 24),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Toplam İşlem',
-                                style: TextStyle(
-                                  color: isDark ? Colors.white : Colors.black87,
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${_allTransactions.length} işlem',
-                                style: TextStyle(
-                                  color: (isDark ? Colors.white : Colors.black87).withOpacity(0.8),
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (_isLoading) ...[
-                          const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+          child: Center( // Center the "Coming Soon" text
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.construction, // A relevant icon for "Coming Soon"
+                  size: 80,
+                  color: Color(0xFFFF6B35).withOpacity(0.7),
+                ),
+                SizedBox(height: 20),
+                Text(
+                  'Coming Soon!',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black87,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-
-              // Content area
-              Expanded(
-                child: _buildContent(isDark),
-              ),
-            ],
+                SizedBox(height: 10),
+                Text(
+                  'Transaction history feature is under development.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: (isDark ? Colors.white : Colors.black87).withOpacity(0.8),
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -636,6 +586,7 @@ class _TransactionHistoryPageState extends State<TransactionHistoryPage> {
                   ),
                   if (tx['fee'] != null) ...[
                     Text(
+                      // Ücretin lamports'tan SOL'a dönüştürülmesi
                       'Ücret: ${(tx['fee'] / 1000000000).toStringAsFixed(6)} SOL',
                       style: TextStyle(
                         color: (isDark ? Colors.white : Colors.black87).withOpacity(0.5),

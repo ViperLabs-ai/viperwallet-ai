@@ -1,3 +1,4 @@
+// File: /swap_page.dart
 import 'dart:convert';
 import 'dart:math';
 import 'dart:async';
@@ -11,9 +12,8 @@ import 'package:solana/dto.dart';
 import 'package:solana/encoder.dart';
 import 'package:solana/solana.dart';
 import 'package:cryptography/cryptography.dart';
-import '../services/swap_rpc_service.dart';
 import '../widgets/glass_card.dart';
-import '../models/token_info.dart';
+import '../models/token_info.dart'; // Ensure this file exists and defines TokenInfo
 
 class SwapPage extends StatefulWidget {
   final Ed25519HDKeyPair wallet;
@@ -29,7 +29,13 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
   final _toAmountController = TextEditingController();
   final _contractAddressController = TextEditingController();
 
-  String _fromToken = 'SOL';
+  TokenInfo _selectedFromTokenInfo = TokenInfo( // Default to SOL
+    address: 'So11111111111111111111111111111111111111112',
+    name: 'Solana',
+    symbol: 'SOL',
+    decimals: 9,
+    verified: true,
+  );
   TokenInfo? _toToken;
 
   bool _isLoading = false;
@@ -37,14 +43,17 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
   bool _isLoadingBalances = false;
   bool _isAddingToken = false;
   bool _showAddTokenDialog = false;
+  bool _showFromTokenSelectionDialog = false;
 
   double _exchangeRate = 0.0;
   double _priceImpact = 0.0;
-  double _minimumReceived = 0.0;
+  double _minimumReceived = 0;
   double _networkFee = 0.0;
+  double _solBalance = 0.0; // Added for SOL balance
 
   Map<String, double> _tokenBalances = {};
   List<TokenInfo> _allTokens = []; // We will store all tokens here
+  List<TokenInfo> _walletTokens = []; // Tokens found in the user's wallet
 
   final Map<String, TokenInfo> _predefinedTokens = {
     'SOL': TokenInfo(
@@ -63,8 +72,13 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
   // Updated RPC endpoints - more reliable ones
   final List<Map<String, dynamic>> _rpcEndpoints = [
     {
-      'url': 'https://api.mainnet-beta.solana.com',
+      'url': 'https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e',
       'name': 'Solana Labs',
+      'maxTxSize': 1232,
+    },
+    {
+      'url': 'https://api.mainnet-beta.solana.com',
+      'name': 'Mainnet Beta RPC',
       'maxTxSize': 1232,
     },
     {
@@ -89,53 +103,25 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       'verified': true,
     },
     {
+      'symbol': 'SOL',
+      'name': 'Solana',
+      'address': 'So11111111111111111111111111111111111111112',
+      'decimals': 9, // Changed to 9 for SOL
+      'verified': true,
+    },
+    {
       'symbol': 'USDT',
       'name': 'Tether USD',
-      'address': 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+      'address': 'Es9vMFrzaCERmJfrF4H2cpdgY9SwaJrHwmuqaAccgqgE',
       'decimals': 6,
       'verified': true,
     },
     {
       'symbol': 'BONK',
       'name': 'Bonk',
-      'address': 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
+      'address': 'DezX86zR7PnHcQxJDRrM2DMd1Qh13b2S2s2d2d2d2d2d', // Example address, replace with actual
       'decimals': 5,
-      'verified': true,
-    },
-    {
-      'symbol': 'WIF',
-      'name': 'dogwifhat',
-      'address': 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
-      'decimals': 6,
-      'verified': true,
-    },
-    {
-      'symbol': 'JUP',
-      'name': 'Jupiter',
-      'address': 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
-      'decimals': 6,
-      'verified': true,
-    },
-    {
-      'symbol': 'RAY',
-      'name': 'Raydium',
-      'address': '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R',
-      'decimals': 6,
-      'verified': true,
-    },
-    {
-      'symbol': 'ORCA',
-      'name': 'Orca',
-      'address': 'orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE',
-      'decimals': 6,
-      'verified': true,
-    },
-    {
-      'symbol': 'MNGO',
-      'name': 'Mango',
-      'address': 'MangoCzJ36AjZyKwVj3VnYU4GTonjfVEnJmvvWaxLac',
-      'decimals': 6,
-      'verified': true,
+      'verified': false,
     },
   ];
 
@@ -154,6 +140,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     _fromAmountController.addListener(_onAmountChanged);
     _loadAllTokens(); // Load token list
     _loadTokenBalances();
+    _loadSolBalance(); // Load SOL balance
     _logWalletInfo();
   }
 
@@ -454,64 +441,187 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     );
   }
 
+  // Helper to get token metadata from _allTokens
+  Future<Map<String, dynamic>> _getTokenMetadata(String mintAddress) async {
+    final token = _allTokens.firstWhere(
+          (t) => t.address == mintAddress,
+      orElse: () => TokenInfo(
+        address: mintAddress,
+        name: 'Unknown Token',
+        symbol: mintAddress.substring(0, 6),
+        decimals: 0, // Default, will be updated if found
+        verified: false,
+      ),
+    );
+    return {
+      'name': token.name,
+      'symbol': token.symbol,
+      'logoURI': token.logoURI,
+      'verified': token.verified,
+      'decimals': token.decimals,
+    };
+  }
+
+  // New function to fetch token balances using Helius
+  Future<List<Map<String, dynamic>>> fetchTokenBalancesFromHelius(String walletAddress) async {
+    const apiKey = '774e9e08-9268-49f2-95c0-f1f05666f96e';
+    final url = Uri.parse('https://mainnet.helius-rpc.com/?api-key=$apiKey');
+
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        "jsonrpc": "2.0",
+        "id": "1",
+        "method": "getAssetsByOwner",
+        "params": {
+          "ownerAddress": walletAddress,
+          "page": 1,
+          "limit": 100,
+          "displayOptions": {
+            "showFungible": true,
+            "showZeroBalance": false,
+            "showNativeBalance": false,
+          }
+        }
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final List<dynamic> items = data['result']['items'] ?? [];
+      List<Map<String, dynamic>> tokens = [];
+
+      for (var item in items) {
+        if (item['token_info'] != null && item['token_info']['balance'] != null) {
+          final mint = item['id'];
+          final balance = (item['token_info']['balance'] as num).toDouble();
+          final decimals = item['token_info']['decimals'] ?? 0;
+          final uiAmount = balance / (pow(10, decimals));
+
+          if (uiAmount > 0) {
+            final tokenInfo = await _getTokenMetadata(mint); // Token metadata al
+            tokens.add({
+              'mint': mint,
+              'balance': uiAmount,
+              'decimals': decimals,
+              'name': tokenInfo['name'] ?? 'Unknown Token',
+              'symbol': tokenInfo['symbol'] ?? mint.substring(0, 6),
+              'logoURI': tokenInfo['logoURI'],
+              'verified': tokenInfo['verified'] ?? false,
+            });
+          }
+        }
+      }
+      return tokens;
+    } else {
+      throw Exception('Helius API error: ${response.statusCode}');
+    }
+  }
+
   Future<void> _loadTokenBalances() async {
     if (!mounted) return;
 
     setState(() => _isLoadingBalances = true);
+    _tokenBalances.clear();
+    _walletTokens.clear();
 
     try {
-      debugPrint('🔍 Loading wallet balance: ${widget.wallet.address}');
+      debugPrint('🔍 Loading wallet balances for: ${widget.wallet.address}');
+      final fetchedTokens = await fetchTokenBalancesFromHelius(widget.wallet.address);
 
-      for (final endpoint in _rpcEndpoints) {
-        try {
-          final response = await http.post(
-            Uri.parse(endpoint['url']),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({
-              'jsonrpc': '2.0',
-              'id': 1,
-              'method': 'getBalance',
-              'params': [widget.wallet.address],
-            }),
-          ).timeout(const Duration(seconds: 10));
-
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            if (data['result'] != null) {
-              final balance = data['result']['value'] / 1000000000.0;
-              debugPrint('💰 Balance loaded from ${endpoint['name']}: $balance SOL');
-
-              if (mounted) {
-                setState(() {
-                  _tokenBalances['SOL'] = balance;
-                });
-              }
-              break;
-            }
+      if (mounted) {
+        setState(() {
+          for (var tokenData in fetchedTokens) {
+            final tokenInfo = TokenInfo(
+              address: tokenData['mint'],
+              name: tokenData['name'],
+              symbol: tokenData['symbol'],
+              decimals: tokenData['decimals'],
+              logoURI: tokenData['logoURI'],
+              verified: tokenData['verified'],
+            );
+            _tokenBalances[tokenInfo.symbol] = tokenData['balance'];
+            _walletTokens.add(tokenInfo);
           }
-        } catch (e) {
-          debugPrint('❌ Balance error from ${endpoint['name']}: $e');
-          continue;
-        }
+
+          // Ensure SOL is always in _walletTokens if not already added by Helius
+          if (!_walletTokens.any((token) => token.symbol == 'SOL')) {
+            _walletTokens.insert(0, _predefinedTokens['SOL']!);
+            // _tokenBalances['SOL'] is now handled by _loadSolBalance
+          }
+
+          // Set the default selected token to SOL if it exists, otherwise the first token
+          if (_walletTokens.isNotEmpty) {
+            _selectedFromTokenInfo = _walletTokens.firstWhere(
+                  (token) => token.symbol == 'SOL',
+              orElse: () => _walletTokens.first,
+            );
+          }
+        });
+        debugPrint('✅ Wallet balances loaded: $_tokenBalances');
       }
     } catch (e) {
       debugPrint('❌ Balance loading error: $e');
       if (mounted) {
-        _showErrorDialog('Balance Error', 'Could not load wallet balance. Please try again.'); // Translated
+        _showErrorDialog('Balance Error', 'Could not load wallet balances. Please try again.\n$e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingBalances = false);
       }
     }
+  }
 
-    if (mounted) {
-      setState(() => _isLoadingBalances = false);
+  // New function to load SOL balance
+  Future<void> _loadSolBalance() async {
+    if (!mounted) return;
+
+    try {
+      print('🔍 Loading SOL balance for wallet: ${widget.wallet.address}');
+
+      final client = SolanaClient(
+        rpcUrl: Uri.parse('https://mainnet.helius-rpc.com/?api-key=774e9e08-9268-49f2-95c0-f1f05666f96e'),
+        websocketUrl: Uri.parse('wss://api.mainnet-beta.solana.com'),
+      );
+
+      final balance = await client.rpcClient.getBalance(widget.wallet.address);
+
+      print('💰 Raw SOL balance response: $balance');
+
+      // lamportsPerSol is a constant from the solana package, typically 1,000,000,000
+      const int lamportsPerSol = 1000000000;
+      final balanceInSol = balance.value / lamportsPerSol;
+
+      print('💰 Balance in SOL: $balanceInSol');
+
+      if (mounted) {
+        setState(() {
+          _solBalance = balanceInSol;
+          _tokenBalances['SOL'] = _solBalance; // Update SOL balance in _tokenBalances map
+        });
+      }
+    } catch (e) {
+      print('❌ SOL Balance loading error: $e');
+      if (mounted) {
+        setState(() {
+          _solBalance = 0.0;
+          _tokenBalances['SOL'] = 0.0;
+        });
+      }
+      // Do not rethrow here if you want the app to continue functioning without SOL balance
     }
   }
+
 
   void _onAmountChanged() {
     _quoteRefreshTimer?.cancel();
 
     if (_fromAmountController.text.isNotEmpty &&
         _fromAmountController.text != '0' &&
-        _toToken != null) {
+        _toToken != null && // Ensure _toToken is not null
+        _selectedFromTokenInfo.address != _toToken!.address // Ensure tokens are not the same
+    ) {
       _quoteRefreshTimer = Timer(const Duration(milliseconds: 800), () {
         if (mounted) {
           _getQuote();
@@ -548,6 +658,15 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       verified: tokenData['verified'] ?? true,
     );
 
+    // NEW CHECK: Prevent selecting the same token as the 'from' token
+    if (_selectedFromTokenInfo.address == token.address) {
+      _showErrorDialog(
+        'Invalid Selection',
+        'You cannot select the same token for both sending and receiving.',
+      );
+      return;
+    }
+
     setState(() {
       _toToken = token;
       _showAddTokenDialog = false;
@@ -558,8 +677,38 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       '${token.name} (${token.symbol}) successfully added and selected.', // Translated
     );
 
-    if (_fromAmountController.text.isNotEmpty && _fromAmountController.text != '0') {
-      _getQuote();
+    // No need to call _getQuote immediately after adding a popular token.
+    // The user might want to adjust the amount first.
+    // The _onAmountChanged listener will handle calling _getQuote when the amount changes.
+  }
+
+  Future<List<TokenInfo>> fetchRaydiumTokens() async {
+    final response = await http.get(Uri.parse('https://api.raydium.io/pairs'));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final pairs = data['data'] as List<dynamic>;
+      final tokens = <TokenInfo>{};
+
+      for (final pair in pairs) {
+        tokens.add(TokenInfo(
+          address: pair['baseMint'],
+          symbol: pair['baseSymbol'],
+          name: pair['baseSymbol'],
+          decimals: int.tryParse(pair['baseDecimals'].toString()) ?? 0,
+          verified: true,
+        ));
+        tokens.add(TokenInfo(
+          address: pair['quoteMint'],
+          symbol: pair['quoteSymbol'],
+          name: pair['quoteSymbol'],
+          decimals: int.tryParse(pair['quoteDecimals'].toString()) ?? 0,
+          verified: true,
+        ));
+      }
+
+      return tokens.toList();
+    } else {
+      throw Exception('Raydium token listesi alınamadı');
     }
   }
 
@@ -568,14 +717,14 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     final address = _contractAddressController.text.trim();
 
     if (address.isEmpty) {
-      _showErrorDialog('Missing Information', 'Please enter the token contract address.'.tr()); // Translated
+      _showErrorDialog('Missing Information', 'Please enter the token contract address.'.tr());
       return;
     }
 
     if (!_isValidSolanaAddress(address)) {
       _showErrorDialog(
-        'Invalid Address'.tr(), // Translated
-        'The address you entered is not a valid Solana token address. Please check.'.tr(), // Translated
+        'Invalid Address'.tr(),
+        'The address you entered is not a valid Solana token address. Please check.'.tr(),
       );
       return;
     }
@@ -587,7 +736,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
       TokenInfo? foundToken;
 
-      // 1. First search in the loaded token list
+      // 1. Search in local token list
       for (final token in _allTokens) {
         if (token.address.toLowerCase() == address.toLowerCase()) {
           foundToken = token;
@@ -596,10 +745,9 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
         }
       }
 
-      // 2. If not found in list, search from Jupiter API
+      // 2. Try Jupiter API
       if (foundToken == null) {
         debugPrint('🔍 Getting token information from Jupiter API...');
-
         for (int attempt = 1; attempt <= 3; attempt++) {
           try {
             final response = await http.get(
@@ -618,7 +766,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
               foundToken = TokenInfo(
                 address: tokenData['address'] ?? address,
-                name: tokenData['name'] ?? 'Unknown Token', // Translated
+                name: tokenData['name'] ?? 'Unknown Token',
                 symbol: tokenData['symbol'] ?? 'UNKNOWN',
                 decimals: tokenData['decimals'] ?? 6,
                 logoURI: tokenData['logoURI'],
@@ -628,13 +776,13 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
               debugPrint('✅ Token information received from Jupiter API: ${foundToken.name}');
               break;
             } else if (response.statusCode == 404) {
-              debugPrint('Token not found in Jupiter API'); // Translated
+              debugPrint('Token not found in Jupiter API');
               break;
             } else if (attempt < 3) {
               await Future.delayed(Duration(seconds: attempt * 2));
             }
           } catch (e) {
-            debugPrint('❌ Jupiter API attempt $attempt failed: $e'); // Translated
+            debugPrint('❌ Jupiter API attempt $attempt failed: $e');
             if (attempt < 3) {
               await Future.delayed(Duration(seconds: attempt));
             }
@@ -642,9 +790,43 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
         }
       }
 
-      // 3. If still not found, get basic info from RPC
+      // 2.5. Try Pump.fun APIs
       if (foundToken == null) {
-        debugPrint('🔍 Checking token from RPC...'); // Translated
+        debugPrint('🔍 Trying to get token info from Pump.fun APIs...');
+        final pumpApis = [
+          'https://pumpapi.altlabs.dev/v1/tokens/$address',
+          'https://pumpapi.me/api/v1/token/$address',
+        ];
+
+        for (final url in pumpApis) {
+          try {
+            final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+            if (response.statusCode == 200) {
+              final data = json.decode(response.body);
+
+              foundToken = TokenInfo(
+                address: address,
+                name: data['name'] ?? 'Pump.fun Token',
+                symbol: data['symbol'] ?? address.substring(0, 4).toUpperCase(),
+                decimals: int.tryParse(data['decimals'].toString()) ?? 6,
+                logoURI: data['image'] ?? null,
+                verified: false,
+              );
+
+              debugPrint('✅ Token found via Pump.fun API: ${foundToken.name}');
+              break;
+            } else {
+              debugPrint('Pump.fun API responded with status ${response.statusCode}');
+            }
+          } catch (e) {
+            debugPrint('❌ Pump.fun API error: $e');
+          }
+        }
+      }
+
+      // 3. Try to fetch basic token info via Solana RPC
+      if (foundToken == null) {
+        debugPrint('🔍 Checking token from RPC...');
 
         for (final endpoint in _rpcEndpoints) {
           try {
@@ -672,19 +854,29 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                   address: address,
                   name: shortName,
                   symbol: shortSymbol,
-                  decimals: 6, // Default
+                  decimals: 6,
                   verified: false,
                 );
 
-                debugPrint('✅ Basic token information received from RPC'.tr()); // Translated
+                debugPrint('✅ Basic token information received from RPC');
                 break;
               }
             }
           } catch (e) {
-            debugPrint('❌ RPC error from ${endpoint['name']}: $e'); // Translated
+            debugPrint('❌ RPC error from ${endpoint['name']}: $e');
             continue;
           }
         }
+      }
+
+      // Prevent adding same token as from-token
+      if (foundToken != null && _selectedFromTokenInfo.address == foundToken.address) {
+        _showErrorDialog(
+          'Invalid Selection',
+          'You cannot select the same token for both sending and receiving.',
+        );
+        setState(() => _isAddingToken = false);
+        return;
       }
 
       if (foundToken != null && mounted) {
@@ -692,31 +884,35 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
           _toToken = foundToken;
           _showAddTokenDialog = false;
           _contractAddressController.clear();
+          // When a new token is added, clear the amount fields and quote
+          _fromAmountController.clear();
+          _toAmountController.clear();
+          _currentQuote = null;
+          _exchangeRate = 0.0;
+          _priceImpact = 0.0;
+          _minimumReceived = 0.0;
         });
 
         _showSuccessDialog(
-          'Token Successfully Added'.tr(), // Translated
-          '${foundToken.name} (${foundToken.symbol}) has been successfully added.\n\n' // Translated
+          'Token Successfully Added'.tr(),
+          '${foundToken.name} (${foundToken.symbol}) has been successfully added.\n\n'
               'Address: ${address.substring(0, 8)}...${address.substring(address.length - 8)}\n'
-              'Verified: ${foundToken.verified ? 'Yes' : 'No'}', // Translated
+              'Verified: ${foundToken.verified ? 'Yes' : 'No'}',
         );
 
-        // Get quote
-        if (_fromAmountController.text.isNotEmpty && _fromAmountController.text != '0') {
-          await Future.delayed(const Duration(milliseconds: 500));
-          _getQuote();
-        }
+        // Do NOT call _getQuote here. The user needs to input an amount first.
+        // The _onAmountChanged listener will trigger _getQuote when the amount is entered.
       } else {
-        throw Exception('Token not found or invalid address'); // Translated
+        throw Exception('Token not found or invalid address');
       }
 
     } catch (e) {
-      debugPrint('❌ Token addition error: $e'); // Translated
+      debugPrint('❌ Token addition error: $e');
       if (mounted) {
         _showErrorDialog(
-          'Could Not Add Token', // Translated
-          'An error occurred while adding the token:\n${e.toString()}\n\n' // Translated
-              'Please check the token address and try again.', // Translated
+          'Could Not Add Token',
+          'An error occurred while adding the token:\n${e.toString()}\n\n'
+              'Please check the token address and try again.',
         );
       }
     } finally {
@@ -726,15 +922,30 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     }
   }
 
+
   // ENHANCED GET QUOTE FUNCTION
   Future<void> _getQuote() async {
-    if (_isLoadingQuote || !mounted || _toToken == null) return;
+    if (_isLoadingQuote || !mounted || _toToken == null || _selectedFromTokenInfo == null) return;
+
+    // Additional check to prevent calling Jupiter if input and output are the same
+    if (_selectedFromTokenInfo.address == _toToken!.address) {
+      debugPrint('🚫 Attempted to get quote for same input and output mints. Aborting.');
+      setState(() {
+        _toAmountController.text = '';
+        _exchangeRate = 0.0;
+        _currentQuote = null;
+        _priceImpact = 0.0;
+        _minimumReceived = 0.0;
+      });
+      _showErrorDialog('Invalid Swap', 'Cannot swap a token for itself.');
+      return;
+    }
 
     setState(() => _isLoadingQuote = true);
 
     try {
       final fromAmount = double.parse(_fromAmountController.text);
-      final fromToken = _predefinedTokens[_fromToken]!;
+      final fromToken = _selectedFromTokenInfo;
       final amountInSmallestUnit = (fromAmount * pow(10, fromToken.decimals)).toInt();
 
       debugPrint('🔍 Getting quote...'); // Translated
@@ -757,7 +968,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
               'slippageBps': '50',
               'onlyDirectRoutes': 'false', // Try all routes
               'swapMode': 'ExactIn',
-              'maxAccounts': '20',
+              'maxAccounts': '64',
             },
           );
 
@@ -829,7 +1040,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
           _exchangeRate = outputAmount / fromAmount;
           _priceImpact = double.tryParse(quoteData!['priceImpactPct']?.toString() ?? '0') ?? 0.0;
           _minimumReceived = outputAmount * 0.995; // 0.5% slippage
-          _networkFee = 0.000005;
+          _networkFee = 0.000005; // This might need to be dynamic from Jupiter API
         });
 
         debugPrint('✅ Quote successfully processed'); // Translated
@@ -869,47 +1080,51 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
   }
 
   Future<void> _swapTokens() async {
-    if (_fromToken == 'SOL' && _toToken != null) {
-      // This part might need more logic depending on if you allow swapping SOL to SOL or other specific cases
-      // For now, let's assume it should reverse if SOL is already chosen as 'from' and a 'to' token exists.
-      // Or you might want to prevent swapping SOL to itself directly and handle it via the executeSwap.
-    } else if (_toToken != null) {
-      setState(() {
-        final tempToken = _toToken;
-        _toToken = TokenInfo(
-          address: _predefinedTokens[_fromToken]!.address,
-          name: _predefinedTokens[_fromToken]!.name,
-          symbol: _predefinedTokens[_fromToken]!.symbol,
-          decimals: _predefinedTokens[_fromToken]!.decimals,
-          verified: _predefinedTokens[_fromToken]!.verified,
-        );
-        _fromToken = tempToken!.symbol;
-
-        final tempAmount = _fromAmountController.text;
-        _fromAmountController.text = _toAmountController.text;
-        _toAmountController.text = tempAmount;
-
-        _currentQuote = null;
-        _exchangeRate = 0.0;
-        _priceImpact = 0.0;
-        _minimumReceived = 0.0;
-      });
-
-      _rotateController.forward().then((_) {
-        _rotateController.reset();
-      });
-
-      if (_fromAmountController.text.isNotEmpty && _fromAmountController.text != '0') {
-        await Future.delayed(const Duration(milliseconds: 500));
-        _getQuote();
-      }
-
-      HapticFeedback.lightImpact();
+    if (_selectedFromTokenInfo == null || _toToken == null) {
+      // Should not happen if UI is correct, but as a safeguard
+      return;
     }
+
+    // Prevent swapping the same token
+    if (_selectedFromTokenInfo.address == _toToken!.address) {
+      _showErrorDialog('Invalid Swap', 'Cannot swap a token for itself.');
+      return;
+    }
+
+    setState(() {
+      final tempFromTokenInfo = _selectedFromTokenInfo;
+      final tempToTokenInfo = _toToken;
+
+      // Swap the selected tokens
+      _selectedFromTokenInfo = tempToTokenInfo!;
+      _toToken = tempFromTokenInfo;
+
+      // Swap amounts in text controllers
+      final tempAmount = _fromAmountController.text;
+      _fromAmountController.text = _toAmountController.text;
+      _toAmountController.text = tempAmount;
+
+      // Reset quote-related values
+      _currentQuote = null;
+      _exchangeRate = 0.0;
+      _priceImpact = 0.0;
+      _minimumReceived = 0.0;
+    });
+
+    _rotateController.forward().then((_) {
+      _rotateController.reset();
+    });
+
+    if (_fromAmountController.text.isNotEmpty && _fromAmountController.text != '0') {
+      await Future.delayed(const Duration(milliseconds: 500));
+      _getQuote();
+    }
+
+    HapticFeedback.lightImpact();
   }
 
   Future<void> _executeSwap() async {
-    if (!mounted || _fromAmountController.text.isEmpty || _currentQuote == null) {
+    if (!mounted || _fromAmountController.text.isEmpty) {
       _showErrorDialog('Missing Information', 'Please enter a valid amount.'); // Translated
       return;
     }
@@ -920,15 +1135,33 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
       return;
     }
 
-    final availableBalance = _tokenBalances[_fromToken] ?? 0.0;
+    final availableBalance = _tokenBalances[_selectedFromTokenInfo.symbol] ?? 0.0;
     if (fromAmount > availableBalance) {
       _showErrorDialog(
         'Insufficient Balance'.tr(), // Translated
         'The amount you entered exceeds your current balance.\n\n' // Translated
-            'Available balance: ${availableBalance.toStringAsFixed(6)} $_fromToken\n'
-            'Entered amount: ${fromAmount.toStringAsFixed(6)} $_fromToken', // Translated
+            'Available balance: ${availableBalance.toStringAsFixed(6)} ${_selectedFromTokenInfo.symbol}\n'
+            'Entered amount: ${fromAmount.toStringAsFixed(6)} ${_selectedFromTokenInfo.symbol}', // Translated
       );
       return;
+    }
+
+    // If _currentQuote is null, try to get a quote immediately before proceeding
+    if (_currentQuote == null) {
+      setState(() => _isLoadingQuote = true);
+      try {
+        await _getQuote();
+      } catch (e) {
+        setState(() => _isLoadingQuote = false);
+        _showErrorDialog('Quote Error', 'Could not get a price quote. Please try again.');
+        return;
+      } finally {
+        setState(() => _isLoadingQuote = false);
+      }
+      if (_currentQuote == null) {
+        _showErrorDialog('Quote Error', 'Failed to get a price quote. Cannot proceed with swap.');
+        return;
+      }
     }
 
     final confirmed = await _showConfirmationDialog();
@@ -962,6 +1195,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
         await Future.delayed(const Duration(seconds: 3));
         await _loadTokenBalances();
+        await _loadSolBalance(); // Refresh SOL balance after swap
 
         HapticFeedback.heavyImpact();
       } else {
@@ -1003,7 +1237,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
               'wrapAndUnwrapSol': true,
               'dynamicComputeUnitLimit': true,
               'prioritizationFeeLamports': 1000,
-              'asLegacyTransaction': true,
+              'asLegacyTransaction': false,
             }),
           ).timeout(const Duration(seconds: 30));
 
@@ -1170,7 +1404,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _buildDetailRow('Sending:', '${_fromAmountController.text} $_fromToken'), // Translated
+                        _buildDetailRow('Sending:', '${_fromAmountController.text} ${_selectedFromTokenInfo.symbol}'), // Updated
                         _buildDetailRow('Receiving:', '${_toAmountController.text} ${_toToken?.symbol}'), // Translated
                         _buildDetailRow('Minimum Received:', '${_minimumReceived.toStringAsFixed(6)} ${_toToken?.symbol}'), // Translated
                         _buildDetailRow(
@@ -1271,12 +1505,14 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
 
   bool _canSwap() {
     return _fromAmountController.text.isNotEmpty &&
-        _currentQuote != null &&
         !_isLoading &&
         !_isLoadingQuote &&
-        _toToken != null;
+        _toToken != null &&
+        _selectedFromTokenInfo != null &&
+        _selectedFromTokenInfo.address != _toToken!.address; // Ensure tokens are not the same
   }
 
+  // MODIFIED: _buildAddTokenDialog to show token info after adding
   Widget _buildAddTokenDialog() {
     return _buildGlassContainer(
       width: MediaQuery.of(context).size.width * 0.9,
@@ -1294,7 +1530,7 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
                 child: const Icon(Icons.add_circle, color: Colors.orange, size: 28),
               ),
               const SizedBox(width: 12),
-               Text(
+              Text(
                 'Add Token'.tr(), // Translated from 'Token Ekle'
                 style: TextStyle(
                   fontSize: 20,
@@ -1304,66 +1540,6 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
               ),
             ],
           ),
-          const SizedBox(height: 24),
-
-          // Popular tokens section
-          _buildGlassContainer(
-            color: Colors.white,
-            opacity: 0.05,
-            borderRadius: 12,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                 Text(
-                  'Popular Tokens'.tr(), // Translated from 'Popüler Tokenlar'
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _popularTokens.map((token) =>
-                      GestureDetector(
-                        onTap: () => _addPopularToken(token),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                token['symbol']!,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              Text(
-                                token['name']!,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ).toList(),
-                ),
-              ],
-            ),
-          ),
-
           const SizedBox(height: 20),
 
           // Custom token section
@@ -1470,634 +1646,977 @@ class _SwapPageState extends State<SwapPage> with TickerProviderStateMixin {
     );
   }
 
+  // MODIFIED: _buildFromTokenSelectionDialog to include token images and names, and be scrollable
+  Widget _buildFromTokenSelectionDialog() {
+    return _buildGlassContainer(
+      width: MediaQuery.of(context).size.width * 0.9,
+      height: MediaQuery.of(context).size.height * 0.7, // Give it a fixed height for scrolling
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.token, color: Colors.orange, size: 28),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Select Token to Send'.tr(), // Translated
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          _isLoadingBalances
+              ? const Center(
+            child: CircularProgressIndicator(color: Colors.orange),
+          )
+              : _walletTokens.isEmpty
+              ? Expanded( // Use Expanded to fill available space
+            child: Center(
+              child: Text(
+                'No tokens found in your wallet.'.tr(),
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+          )
+              : Expanded( // Make the ListView scrollable
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _walletTokens.length,
+              itemBuilder: (context, index) {
+                final token = _walletTokens[index];
+                final balance = _tokenBalances[token.symbol] ?? 0.0;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedFromTokenInfo = token;
+                      _showFromTokenSelectionDialog = false;
+                      _fromAmountController.clear(); // Clear amount when changing token
+                      _toAmountController.clear();
+                      _currentQuote = null;
+                      _exchangeRate = 0.0;
+                      _priceImpact = 0.0;
+                      _minimumReceived = 0.0;
+
+                      // If selectedFromTokenInfo is not SOL, set _toToken to SOL
+                      if (_selectedFromTokenInfo.symbol != 'SOL') {
+                        _toToken = _predefinedTokens['SOL'];
+                      } else {
+                        // If SOL is selected as from token, clear toToken to allow user to select
+                        _toToken = null;
+                      }
+                    });
+                    HapticFeedback.lightImpact();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0), // Add vertical padding between items
+                    child: _buildGlassContainer(
+                      color: Colors.white,
+                      opacity: 0.05,
+                      borderRadius: 12,
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      child: Row(
+                        children: [
+                          // Token Logo/Icon
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: token.logoURI != null && token.logoURI!.isNotEmpty
+                                ? ClipOval(
+                              child: Image.network(
+                                token.logoURI!,
+                                width: 40,
+                                height: 40,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Icon(Icons.token, color: Colors.white70),
+                              ),
+                            )
+                                : Icon(Icons.token, color: Colors.white70),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      token.name,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.orange.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                      ),
+                                      child: Text(
+                                        token.symbol,
+                                        style: const TextStyle(
+                                          color: Colors.orange,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    if (token.verified)
+                                      Container(
+                                        margin: const EdgeInsets.only(left: 6),
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(
+                                          Icons.verified,
+                                          color: Colors.green,
+                                          size: 16,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Balance: ${balance.toStringAsFixed(6)}',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (_selectedFromTokenInfo.address == token.address)
+                            const Icon(Icons.check_circle, color: Colors.green, size: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _showFromTokenSelectionDialog = false;
+                });
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Close'.tr()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF000000),
-              const Color(0xFF1A1A1A),
-              const Color(0xFF2D1810),
-              const Color(0xFF1A1A1A),
-            ],
+      body: SafeArea(
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF000000),
+                const Color(0xFF1A1A1A),
+                const Color(0xFF2D1810),
+                const Color(0xFF1A1A1A),
+              ],
+            ),
           ),
-        ),
-        child: Stack(
-          children: [
-            // Background blur effect
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.orange.withOpacity(0.1),
-                    Colors.deepOrange.withOpacity(0.05),
-                    Colors.transparent,
-                  ],
+          child: Stack(
+            children: [
+              // Background blur effect
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.orange.withOpacity(0.1),
+                      Colors.deepOrange.withOpacity(0.05),
+                      Colors.transparent,
+                    ],
+                  ),
                 ),
               ),
-            ),
 
-            // AppBar
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                        ),
-                        child: const Icon(Icons.arrow_back, color: Colors.white),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(
-                      'Token Swap'.tr(), // Translated from 'Token Swap'
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    GestureDetector(
-                      onTap: _loadTokenBalances,
-                      child: AnimatedBuilder(
-                        animation: _isLoadingBalances ? _pulseController : kAlwaysCompleteAnimation,
-                        builder: (context, child) {
-                          return Transform.scale(
-                            scale: _isLoadingBalances ? _pulseAnimation.value : 1.0,
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.orange.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                              ),
-                              child: const Icon(Icons.refresh, color: Colors.orange),
+              // AppBar (positioned to stay at the top)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
                             ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // Main content
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 80, 16, 5),
-                child: Column(
-                  children: [
-                    // From section
-                    _buildGlassContainer(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'You send'.tr(), // Translated from 'Gönderilecek'
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () {
-                                  final balance = _tokenBalances[_fromToken] ?? 0.0;
-                                  if (balance > 0) {
-                                    _fromAmountController.text = balance.toString();
-                                    HapticFeedback.lightImpact();
-                                  }
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [Colors.orange, Colors.deepOrange],
-                                    ),
-                                    borderRadius: BorderRadius.circular(25),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.orange.withOpacity(0.2),
-                                        blurRadius: 8,
-                                        spreadRadius: 1,
-                                      ),
-                                    ],
-                                  ),
-                                  child: Text(
-                                    'MAX'.tr(),
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            child: const Icon(Icons.arrow_back, color: Colors.white),
                           ),
-                          const SizedBox(height: 8),
-                          Row(
-                            children: [
-                              Icon(
-                                _isLoadingBalances ? Icons.hourglass_empty : Icons.account_balance_wallet,
-                                color: Colors.white70,
-                                size: 16,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'Balance: ${(_tokenBalances[_fromToken] ?? 0.0).toStringAsFixed(6)} SOL', // Translated
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [Colors.purple, Colors.deepPurple],
-                                  ),
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.purple.withOpacity(0.3),
-                                      blurRadius: 12,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(Icons.circle, color: Colors.white, size: 24),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Solana',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: _fromAmountController,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      decoration: const InputDecoration(
-                                        hintText: '0.0',
-                                        hintStyle: TextStyle(
-                                          color: Colors.white38,
-                                          fontSize: 28,
-                                        ),
-                                        border: InputBorder.none,
-                                        contentPadding: EdgeInsets.zero,
-                                      ),
-                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Swap button
-                    Center(
-                      child: GestureDetector(
-                        onTap: _swapTokens,
-                        child: AnimatedBuilder(
-                          animation: _rotateAnimation,
-                          builder: (context, child) {
-                            return Transform.rotate(
-                              angle: _rotateAnimation.value * 2 * pi,
-                              child: Container(
-                                width: 56,
-                                height: 56,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [Colors.orange, Colors.deepOrange],
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.orange.withOpacity(0.4),
-                                      blurRadius: 15,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.swap_vert,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              ),
-                            );
-                          },
                         ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // To section
-                    _buildGlassContainer(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                'You receive (estimated)'.tr(), // Translated from 'Alınacak (tahmini)'
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _showAddTokenDialog = true;
-                                  });
-                                  HapticFeedback.lightImpact();
-                                },
+                        const SizedBox(width: 16),
+                        Text(
+                          'Token Swap'.tr(), // Translated from 'Token Swap'
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () {
+                            _loadTokenBalances();
+                            _loadSolBalance(); // Refresh SOL balance
+                          },
+                          child: AnimatedBuilder(
+                            animation: _isLoadingBalances ? _pulseController : kAlwaysCompleteAnimation,
+                            builder: (context, child) {
+                              return Transform.scale(
+                                scale: _isLoadingBalances ? _pulseAnimation.value : 1.0,
                                 child: Container(
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                  ),
+                                  child: const Icon(Icons.refresh, color: Colors.orange),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Main scrollable content
+              Padding(
+                padding: const EdgeInsets.only(top: 80.0), // Adjust top padding to clear the AppBar
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 20), // Adjusted vertical padding
+                  child: Column(
+                    children: [
+                      _buildGlassContainer(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  'You send'.tr(), // Translated from 'Gönderilecek'
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                Spacer(),
+                                GestureDetector(
+                                  onTap: () {
+                                    final balance = _tokenBalances[_selectedFromTokenInfo.symbol] ?? 0.0;
+                                    if (balance > 0) {
+                                      _fromAmountController.text = balance.toString();
+                                      HapticFeedback.lightImpact();
+                                    }
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [Colors.orange, Colors.deepOrange],
+                                      ),
+                                      borderRadius: BorderRadius.circular(25),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.orange.withOpacity(0.2),
+                                          blurRadius: 8,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: Text(
+                                      'MAX'.tr(),
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 15,),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _showFromTokenSelectionDialog = true;
+                                    });
+                                    HapticFeedback.lightImpact();
+                                  },
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [Colors.orange, Colors.deepOrange],
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.orange.withOpacity(0.3),
+                                          blurRadius: 8,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.add,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Icon(
+                                  _isLoadingBalances ? Icons.hourglass_empty : Icons.account_balance_wallet,
+                                  color: Colors.white70,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Balance: ${(_tokenBalances[_selectedFromTokenInfo.symbol] ?? 0.0).toStringAsFixed(6)} ${_selectedFromTokenInfo.symbol}', // Updated
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            Row(
+                              children: [
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _showFromTokenSelectionDialog = true;
+                                    });
+                                    HapticFeedback.lightImpact();
+                                  },
+                                  child: Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [Colors.purple, Colors.deepPurple],
+                                      ),
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.purple.withOpacity(0.3),
+                                          blurRadius: 12,
+                                          spreadRadius: 2,
+                                        ),
+                                      ],
+                                    ),
+                                    child: _selectedFromTokenInfo.logoURI != null && _selectedFromTokenInfo.logoURI!.isNotEmpty
+                                        ? ClipOval(
+                                      child: Image.network(
+                                        _selectedFromTokenInfo.logoURI!,
+                                        width: 48,
+                                        height: 48,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.token, color: Colors.white, size: 24),
+                                      ),
+                                    )
+                                        : const Icon(Icons.token, color: Colors.white, size: 24),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            _selectedFromTokenInfo.name,
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                            ),
+                                            child: Text(
+                                              _selectedFromTokenInfo.symbol,
+                                              style: const TextStyle(
+                                                color: Colors.orange,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          if (_selectedFromTokenInfo.verified)
+                                            Container(
+                                              margin: const EdgeInsets.only(left: 6),
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: const Icon(
+                                                Icons.verified,
+                                                color: Colors.green,
+                                                size: 16,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      TextField(
+                                        controller: _fromAmountController,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          hintText: '0.0',
+                                          hintStyle: TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 28,
+                                          ),
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.zero,
+                                        ),
+                                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      // Swap button
+                      Center(
+                        child: GestureDetector(
+                          onTap: _swapTokens,
+                          child: AnimatedBuilder(
+                            animation: _rotateAnimation,
+                            builder: (context, child) {
+                              return Transform.rotate(
+                                angle: _rotateAnimation.value * 2 * pi,
+                                child: Container(
+                                  width: 56,
+                                  height: 56,
+                                  decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [Colors.orange, Colors.deepOrange],
                                     ),
-                                    borderRadius: BorderRadius.circular(12),
+                                    borderRadius: BorderRadius.circular(16),
                                     border: Border.all(color: Colors.orange.withOpacity(0.3)),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.orange.withOpacity(0.3),
-                                        blurRadius: 8,
-                                        spreadRadius: 1,
+                                        color: Colors.orange.withOpacity(0.4),
+                                        blurRadius: 15,
+                                        spreadRadius: 2,
                                       ),
                                     ],
                                   ),
                                   child: const Icon(
-                                    Icons.add,
+                                    Icons.swap_vert,
                                     color: Colors.white,
+                                    size: 28,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 5),
+
+                      // To section
+                      _buildGlassContainer(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'You receive (estimated)'.tr(), // Translated from 'Alınacak (tahmini)'
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _showAddTokenDialog = true;
+                                    });
+                                    HapticFeedback.lightImpact();
+                                  },
+                                  child: Container(
+                                    width: 40,
+                                    height: 40,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [Colors.orange, Colors.deepOrange],
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.orange.withOpacity(0.3),
+                                          blurRadius: 8,
+                                          spreadRadius: 1,
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.add,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                Container(
+                                  width: 48,
+                                  height: 48,
+                                  decoration: BoxDecoration(
+                                    color: _toToken != null ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: _toToken != null ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: _toToken != null && _toToken!.logoURI != null && _toToken!.logoURI!.isNotEmpty
+                                      ? ClipOval(
+                                    child: Image.network(
+                                      _toToken!.logoURI!,
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => Icon(Icons.token, color: Colors.white70),
+                                    ),
+                                  )
+                                      : Icon(
+                                    _toToken != null ? Icons.token : Icons.help_outline,
+                                    color: _toToken != null ? Colors.green : Colors.white70,
                                     size: 24,
                                   ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: _toToken != null ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: _toToken != null ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _toToken == null
+                                      ? Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Select Token'.tr(), // Translated from 'Token Seçin'
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Click the + button above'.tr(), // Translated from 'Yukarıdaki + butonuna tıklayın'
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.5),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                      : Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            _toToken!.name,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: Colors.orange.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(12),
+                                              border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                                            ),
+                                            child: Text(
+                                              _toToken!.symbol,
+                                              style: const TextStyle(
+                                                color: Colors.orange,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                          if (_toToken!.verified)
+                                            Container(
+                                              margin: const EdgeInsets.only(left: 6),
+                                              padding: const EdgeInsets.all(2),
+                                              decoration: BoxDecoration(
+                                                color: Colors.green.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: const Icon(
+                                                Icons.verified,
+                                                color: Colors.green,
+                                                size: 16,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      TextField(
+                                        controller: _toAmountController,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 28,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        decoration: const InputDecoration(
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.zero,
+                                        ),
+                                        readOnly: true,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                child: Icon(
-                                  _toToken != null ? Icons.token : Icons.help_outline,
-                                  color: _toToken != null ? Colors.green : Colors.white70,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: _toToken == null
-                                    ? Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                              ],
+                            ),
+
+                            // Quote loading indicator
+                            if (_isLoadingQuote)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 12),
+                                child: Row(
                                   children: [
-                                     Text(
-                                      'Select Token'.tr(), // Translated from 'Token Seçin'
+                                    SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Calculating price...'.tr(), // Translated from 'Fiyat hesaplanıyor...'
                                       style: TextStyle(
                                         color: Colors.white70,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w500,
+                                        fontSize: 12,
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Click the + button above'.tr(), // Translated from 'Yukarıdaki + butonuna tıklayın'
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.5),
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                )
-                                    : Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          _toToken!.name,
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.orange.withOpacity(0.2),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                                          ),
-                                          child: Text(
-                                            _toToken!.symbol,
-                                            style: const TextStyle(
-                                              color: Colors.orange,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                        if (_toToken!.verified)
-                                          Container(
-                                            margin: const EdgeInsets.only(left: 6),
-                                            padding: const EdgeInsets.all(2),
-                                            decoration: BoxDecoration(
-                                              color: Colors.green.withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: const Icon(
-                                              Icons.verified,
-                                              color: Colors.green,
-                                              size: 16,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    TextField(
-                                      controller: _toAmountController,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      decoration: const InputDecoration(
-                                        border: InputBorder.none,
-                                        contentPadding: EdgeInsets.zero,
-                                      ),
-                                      readOnly: true,
                                     ),
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
+                        ),
+                      ),
 
-                          // Quote loading indicator
-                          if (_isLoadingQuote)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 12),
-                              child: Row(
+                      const SizedBox(height: 24),
+
+                      // Price details section
+                      if (_currentQuote != null && _toToken != null)
+                        _buildGlassContainer(
+                          color: Colors.blue,
+                          opacity: 0.05,
+                          child: Column(
+                            children: [
+                              Row(
                                 children: [
-                                  SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
-                                    ),
-                                  ),
+                                  Icon(Icons.info_outline, color: Colors.blue, size: 20),
                                   const SizedBox(width: 8),
                                   Text(
-                                    'Calculating price...'.tr(), // Translated from 'Fiyat hesaplanıyor...'
+                                    'Transaction Details'.tr(), // Translated from 'İşlem Detayları'
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              _buildDetailRow('Exchange Rate:', '1 ${_selectedFromTokenInfo.symbol} = ${_exchangeRate.toStringAsFixed(8)} ${_toToken!.symbol}'), // Updated
+                              _buildDetailRow(
+                                'Price Impact:', // Translated
+                                '${_priceImpact.toStringAsFixed(2)}%',
+                                valueColor: _priceImpact > 5.0 ? Colors.red :
+                                _priceImpact > 2.0 ? Colors.orange : Colors.green,
+                              ),
+                              _buildDetailRow('Minimum Received:', '${_minimumReceived.toStringAsFixed(8)} ${_toToken!.symbol}'), // Translated
+                              _buildDetailRow('Estimated Network Fee:', '~${_networkFee.toStringAsFixed(6)} SOL'), // Translated
+                            ],
+                          ),
+                        ),
+
+                      const SizedBox(height: 24), // Added some space before the main action button
+
+                      // Main action button
+                      Container(
+                        width: double.infinity,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: _canSwap() ? Colors.orange.withOpacity(0.3) : Colors.white.withOpacity(0.1),
+                              blurRadius: 20,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: _canSwap()
+                                ? LinearGradient(
+                              colors: [Colors.orange, Colors.deepOrange],
+                            )
+                                : LinearGradient(
+                              colors: [Colors.white.withOpacity(0.1), Colors.white.withOpacity(0.05)],
+                            ),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                          ),
+                          child: ElevatedButton(
+                            onPressed: _canSwap() ? _executeSwap : () {
+                              if (_toToken == null) {
+                                setState(() {
+                                  _showAddTokenDialog = true;
+                                });
+                              } else if (_selectedFromTokenInfo == null) {
+                                setState(() {
+                                  _showFromTokenSelectionDialog = true;
+                                });
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.transparent,
+                              foregroundColor: Colors.white,
+                              shadowColor: Colors.transparent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                                : Text(
+                              _canSwap() ? 'SWAP'.tr() : // Translated from 'SWAP YAP'
+                              _toToken == null ? 'SELECT RECEIVE TOKEN'.tr() :
+                              _selectedFromTokenInfo == null ? 'SELECT SEND TOKEN'.tr() : 'ENTER AMOUNT'.tr(), // Updated
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+
+                      // Security notice
+                      _buildGlassContainer(
+                        color: Colors.blue,
+                        opacity: 0.05,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.security,
+                                color: Colors.blue,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Security Notice'.tr(), // Translated from 'Güvenlik Bildirimi'
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    'This swap will be performed on the Solana mainnet using the Jupiter aggregator. Always verify token contract addresses and be aware of price impact. Transactions are irreversible.'.tr(), // Translated
                                     style: TextStyle(
                                       color: Colors.white70,
-                                      fontSize: 12,
+                                      fontSize: 13,
+                                      height: 1.4,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Price details section
-                    if (_currentQuote != null && _toToken != null)
-                      _buildGlassContainer(
-                        color: Colors.blue,
-                        opacity: 0.05,
-                        child: Column(
-                          children: [
-                            Row(
-                              children: [
-                                Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Transaction Details'.tr(), // Translated from 'İşlem Detayları'
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            _buildDetailRow('Exchange Rate:', '1 $_fromToken = ${_exchangeRate.toStringAsFixed(8)} ${_toToken!.symbol}'), // Translated
-                            _buildDetailRow(
-                              'Price Impact:', // Translated
-                              '${_priceImpact.toStringAsFixed(2)}%',
-                              valueColor: _priceImpact > 5.0 ? Colors.red :
-                              _priceImpact > 2.0 ? Colors.orange : Colors.green,
-                            ),
-                            _buildDetailRow('Minimum Received:', '${_minimumReceived.toStringAsFixed(8)} ${_toToken!.symbol}'), // Translated
-                            _buildDetailRow('Estimated Network Fee:', '~${_networkFee.toStringAsFixed(6)} SOL'), // Translated
                           ],
                         ),
                       ),
-
-                    const Spacer(),
-
-                    // Main action button
-                    Container(
-                      width: double.infinity,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: _canSwap() ? Colors.orange.withOpacity(0.3) : Colors.white.withOpacity(0.1),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: _canSwap()
-                              ? LinearGradient(
-                            colors: [Colors.orange, Colors.deepOrange],
-                          )
-                              : LinearGradient(
-                            colors: [Colors.white.withOpacity(0.1), Colors.white.withOpacity(0.05)],
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                        ),
-                        child: ElevatedButton(
-                          onPressed: _canSwap() ? _executeSwap : () {
-                            if (_toToken == null) {
-                              setState(() {
-                                _showAddTokenDialog = true;
-                              });
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            foregroundColor: Colors.white,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                              : Text(
-                            _canSwap() ? 'SWAP'.tr() : // Translated from 'SWAP YAP'
-                            _toToken == null ? 'SELECT TOKEN'.tr() : 'ENTER AMOUNT'.tr(), // Translated from 'TOKEN SEÇİN' / 'MİKTAR GİRİN'
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // Security notice
-                    _buildGlassContainer(
-                      color: Colors.blue,
-                      opacity: 0.05,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: BoxDecoration(
-                              color: Colors.blue.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.security,
-                              color: Colors.blue,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Security Notice'.tr(), // Translated from 'Güvenlik Bildirimi'
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                SizedBox(height: 6),
-                                Text(
-                                  'This swap will be performed on the Solana mainnet using the Jupiter aggregator. Always verify token contract addresses and be aware of price impact. Transactions are irreversible.'.tr(), // Translated
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 13,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-                  ],
-                ),
-              ),
-            ),
-
-            // Add token dialog overlay
-            if (_showAddTokenDialog)
-              Container(
-                color: Colors.black.withOpacity(0.8),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                  child: Center(
-                    child: _buildAddTokenDialog(),
+                      const SizedBox(height: 16),
+                    ],
                   ),
                 ),
               ),
-          ],
+
+              // Add token dialog overlay
+              if (_showAddTokenDialog)
+                Container(
+                  color: Colors.black.withOpacity(0.8),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    child: Center(
+                      child: _buildAddTokenDialog(),
+                    ),
+                  ),
+                ),
+
+              // Select From Token dialog overlay
+              if (_showFromTokenSelectionDialog)
+                Container(
+                  color: Colors.black.withOpacity(0.8),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                    child: Center(
+                      child: _buildFromTokenSelectionDialog(),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+class TokenInfo {
+  final String address;
+  final String name;
+  final String symbol;
+  final int decimals;
+  final String? logoURI;
+  final bool verified;
+
+  TokenInfo({
+    required this.address,
+    required this.name,
+    required this.symbol,
+    required this.decimals,
+    this.logoURI,
+    this.verified = false,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+          other is TokenInfo &&
+              runtimeType == other.runtimeType &&
+              address == other.address;
+
+  @override
+  int get hashCode => address.hashCode;
 }
