@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "864430348640",
+    "project_id": "viperlabs-ai",
+    "storage_bucket": "viperlabs-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:864430348640:android:487aeb1ee2ea0c962a6605",
+        "android_client_info": {
+          "package_name": "com.app.viperwallet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJUO-pNo9m10GaPmS92odOmB_9ZzEaTfI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

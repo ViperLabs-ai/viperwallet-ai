@@ -1,0 +1,103 @@
+name: viperwallet
+description: "Viper Wallet"
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Core dependencies
+  intl: ^0.20.2
+  cupertino_icons: ^1.0.8
+
+  # State management
+  provider: ^6.1.1
+
+  # Network & HTTP
+  http: ^1.1.0
+  connectivity_plus: ^5.0.2
+
+  # Storage
+  shared_preferences: ^2.2.2
+  flutter_secure_storage: ^9.0.0
+  encrypt: ^5.0.1
+
+  # Crypto & Blockchain
+  solana: ^0.31.2+1
+  crypto: ^3.0.3
+  bs58: ^1.0.0
+  bip39: ^1.0.6
+  ed25519_hd_key: ^2.2.0
+  easy_localization: ^3.0.3
+  easy_localization_loader: ^2.0.1
+  flutter_dotenv: ^5.1.0
+  hive: ^2.2.3 
+  hive_flutter: ^1.1.0
+
+  # UI & Charts
+  fl_chart: ^0.66.0
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^3.5.6
+  flutter_svg: ^2.0.9
+  cached_network_image: ^3.3.0
+  lottie: ^2.7.0
+  shimmer: ^3.0.0
+  flutter_staggered_animations: ^1.1.1
+  convert: ^3.0.1
+  pointycastle: ^3.7.3
+  webview_flutter: ^4.0.0
+  # Utils
+  url_launcher: ^6.2.2
+  package_info_plus: ^4.2.0
+  device_info_plus: ^9.1.1
+  local_auth: ^2.1.7
+  font_awesome_flutter: ^10.8.0
+
+
+dependency_overrides:
+  pinenacl: ^0.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+  cryptography: ^2.7.0
+
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  min_sdk_android: 21
+
+flutter:
+  generate: true
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/icon/
+    - assets/animations/
+    - assets/translations/
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
